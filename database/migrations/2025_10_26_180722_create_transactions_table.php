@@ -17,6 +17,7 @@ return new class extends Migration
             $table->enum('type', ['credit', 'debit']);
             $table->decimal('amount', 14, 2);
             $table->string('reference')->unique();
+            $table->string('idempotency_key')->unique();
             $table->timestamps();
         });
     }
