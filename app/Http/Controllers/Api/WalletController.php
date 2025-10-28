@@ -3,66 +3,63 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use Illuminate\Http\Request;
-use App\Models\Transaction;
+use App\Services\WalletService;
 use App\Models\Wallet;
-use Illuminate\Support\Str;
-use Illuminate\Support\Facades\DB;
-
+use Illuminate\Http\Request;
 
 class WalletController extends Controller
 {
+    protected $walletService;
 
-    public function credit(Request $request, $walletId) {
-        $request->validate([
-            'amount' => 'required|numeric|min:1'
-        ]);
-
-        $wallet = Wallet::findorFail($walletId);
-
-        DB::transaction(function () use ($wallet, $request) {
-            $wallet->balance += $request->amount;
-            $wallet->save();
-
-            Transaction::create([
-                'wallet_id' => $wallet->id,
-                'type' => 'credit',
-                'amount' => $request->amount,
-                'reference' => Str::uuid()
-            ]);
-        });
-        return response()->json(['message' => 'Wallet credited successfully']);
+    public function __construct(WalletService $walletService)
+    {
+        $this->walletService = $walletService;
     }
 
-    public function debit (request $request, $walletId) {
-        $request->validate([
-            'amount' => 'required|numeric|min:1'
+    public function credit(Request $request, $walletId)
+    {
+        $data = $request->validate([
+            'amount' => 'required|numeric|min:1',
         ]);
 
-        $wallet = Wallet::findorFail($walletId);
+        $wallet = Wallet::findOrFail($walletId);
 
-        if ($wallet->balance < $request->amount) {
-            return response()->json([['message' => 'Insufficient balance'], 422]);
+        $result = $this->walletService->credit($wallet, $data['amount']);
+
+        return response()->json([
+            'message' => 'Wallet credited successfully',
+            'transaction' => $result['transaction'],
+            'balance' => $result['balance'],
+        ]);
+    }
+
+    public function debit(Request $request, $walletId)
+    {
+        $data = $request->validate([
+            'amount' => 'required|numeric|min:1',
+        ]);
+
+        $wallet = Wallet::findOrFail($walletId);
+
+        try {
+            $result = $this->walletService->debit($wallet, $data['amount']);
+
+            return response()->json([
+                'message' => 'Wallet debited successfully',
+                'transaction' => $result['transaction'],
+                'balance' => $result['balance'],
+            ]);
+        } catch (\Exception $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
         }
-        
-        DB::transaction( function() use($wallet, $request) {
-            $wallet->balance -= $request->amount;
-            $wallet->save();
-
-            Transaction::create([
-                'wallet_id' => $wallet->id,
-                'type' => 'debit',
-                'amount' => $request->amount,
-                'reference' => Str::uuid()
-            ]);
-        });
-        return response()->json(['message' => 'Wallet debited successfully', 'balance' => $wallet->balance]);
-
     }
 
-    public function transaction($walletId) {
-        $transactions = Transaction::where('wallet_id', $walletId)->latest()->get();
+    public function transactions($walletId)
+    {
+        $wallet = Wallet::findOrFail($walletId);
+
+        $transactions = $this->walletService->transactions($wallet);
+
         return response()->json($transactions);
     }
-
 }
