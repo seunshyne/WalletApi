@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\StoreTransactionRequest;
 use Illuminate\Http\Request;
 use App\Models\Transaction;
 use App\Models\Wallet;
@@ -10,41 +11,35 @@ use Illuminate\Support\Facades\DB;
 
 class TransactionController extends Controller
 {
-    public function store(Request $request)
+    /**
+     * Store a new transaction.
+     */
+    public function store(StoreTransactionRequest $request)
     {
-        // ✅ Validation rules
-        $data = $request->validate([
-            'wallet_id' => 'required|exists:wallets,id',
-            'type' => 'required|in:credit,debit',
-            'amount' => 'required|numeric|min:0.01',
-            'reference' => 'required|string|unique:transactions,reference',
-            'idempotency_key' => 'required|string|unique:transactions,idempotency_key',
-        ]);
+        $data = $request->validated();
 
-        $wallet = Wallet::findOrFail($data['wallet_id']);
-
-        // ✅ Idempotency check (if repeated, return previous result)
+        // Check for duplicate (idempotent) requests
         $existing = Transaction::where('idempotency_key', $data['idempotency_key'])->first();
         if ($existing) {
             return response()->json([
                 'message' => 'Duplicate request (idempotent)',
                 'transaction' => $existing,
-                'wallet_balance' => $wallet->balance
-            ]);
+                'wallet_balance' => $existing->wallet->balance ?? null
+            ], 200);
         }
 
-        // ✅ Overdraft protection
+        $wallet = Wallet::findOrFail($data['wallet_id']);
+
+        // Prevent overdraft
         if ($data['type'] === 'debit' && $wallet->balance < $data['amount']) {
             return response()->json(['message' => 'Insufficient balance'], 422);
         }
 
-        // ✅ Use DB transaction for safety
+        // Use database transaction for safety
         $transaction = DB::transaction(function () use ($data, $wallet) {
-            if ($data['type'] === 'credit') {
-                $wallet->balance += $data['amount'];
-            } else {
-                $wallet->balance -= $data['amount'];
-            }
+            $wallet->balance += ($data['type'] === 'credit')
+                ? $data['amount']
+                : -$data['amount'];
             $wallet->save();
 
             return Transaction::create([
@@ -59,7 +54,49 @@ class TransactionController extends Controller
         return response()->json([
             'message' => 'Transaction successful',
             'transaction' => $transaction,
-            'wallet_balance' => $wallet->balance
+            'wallet_balance' => $wallet->balance,
+        ]);
+    }
+
+    /**
+     * Get a paginated list of transactions.
+     */
+    public function index(Request $request)
+    {
+        $transactions = Transaction::query();
+
+        // Filters
+        if ($request->filled('q')) {
+            $transactions->where('reference', 'like', '%' . $request->q . '%');
+        }
+
+        if ($request->filled('type')) {
+            $transactions->where('type', $request->type);
+        }
+
+        if ($request->filled('from') && $request->filled('to')) {
+            $transactions->whereBetween('created_at', [$request->from, $request->to]);
+        }
+
+        // Paginate
+        $paginated = $transactions->orderByDesc('created_at')->paginate(
+            $request->get('per_page', 10)
+        );
+
+        // Summary (fix: match your 'credit'/'debit' types)
+        $summary = [
+            'total_in' => Transaction::where('type', 'credit')->sum('amount'),
+            'total_out' => Transaction::where('type', 'debit')->sum('amount'),
+        ];
+
+        return response()->json([
+            'data' => $paginated->items(),
+            'meta' => [
+                'total' => $paginated->total(),
+                'page' => $paginated->currentPage(),
+                'per_page' => $paginated->perPage(),
+            ],
+            'summary' => $summary,
         ]);
     }
 }
