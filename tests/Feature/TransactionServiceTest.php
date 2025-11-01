@@ -59,7 +59,7 @@ class TransactionServiceTest extends TestCase
             'currency' => 'NGN',
         ]);
 
-        // ✅ Successful debit
+        // Successful debit
         $transaction = $this->service->process([
             'wallet_id' => $wallet->id,
             'type' => 'debit',
@@ -115,17 +115,17 @@ class TransactionServiceTest extends TestCase
 
         $wallet->refresh();
 
-        // ✅ Wallet should only increase ONCE
+        // Wallet should only increase ONCE
         $this->assertEquals(1500, $wallet->balance);
 
-        // ✅ The two responses should point to the SAME transaction record
+        // The two responses should point to the SAME transaction record
         $this->assertEquals(
             $firstTransaction['transaction']->id,
             $secondTransaction['transaction']->id,
             'Duplicate request created a new transaction instead of returning the existing one.'
         );
 
-        // ✅ Database should have only one transaction with this idempotency key
+        // Database should have only one transaction with this idempotency key
         $this->assertDatabaseCount('transactions', 1);
     }
 }
