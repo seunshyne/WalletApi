@@ -11,9 +11,17 @@ return Application::configure(basePath: dirname(__DIR__))
         commands: __DIR__.'/../routes/console.php',
         health: '/up',
     )
+
     ->withMiddleware(function (Middleware $middleware): void {
-        //
+        $middleware->alias([
+            'idempotent' => App\Http\Middleware\IdempotencyMiddleware::class,
+        ]);
+
+        $middleware->api(prepend: [
+            \Laravel\Sanctum\Http\Middleware\EnsureFrontendRequestsAreStateful::class,
+        ]);
     })
+    
     ->withExceptions(function (Exceptions $exceptions): void {
         //
     })->create();

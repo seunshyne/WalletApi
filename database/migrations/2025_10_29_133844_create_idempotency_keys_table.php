@@ -11,13 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::create('transactions', function (Blueprint $table) {
+        Schema::create('idempotency_keys', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('wallet_id')->constrained()->onDelete('cascade');
-            $table->enum('type', ['credit', 'debit']);
-            $table->decimal('amount', 14, 2);
-            $table->string('reference')->unique();
-            $table->string('idempotency_key')->unique();
+            $table->string('key')->unique();
+            $table->text('response_body');
             $table->timestamps();
         });
     }
@@ -27,6 +24,6 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::dropIfExists('transactions');
+        Schema::dropIfExists('idempotency_keys');
     }
 };
