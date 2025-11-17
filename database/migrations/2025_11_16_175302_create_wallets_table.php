@@ -6,24 +6,22 @@ use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
-    /**
-     * Run the migrations.
-     */
-    public function up(): void
+    public function up()
     {
         Schema::create('wallets', function (Blueprint $table) {
             $table->id();
             $table->foreignId('user_id')->constrained()->onDelete('cascade');
-            $table->string('currency', 3);
-            $table->decimal('balance', 14, 2)->default(0);
+            $table->string('address', 10)->unique();
+            $table->decimal('balance', 15, 2)->default(0.00);
+            $table->string('currency', 10)->default('NGN');
             $table->timestamps();
+            
+            $table->index('user_id');
+            $table->index('address');
         });
     }
 
-    /**
-     * Reverse the migrations.
-     */
-    public function down(): void
+    public function down()
     {
         Schema::dropIfExists('wallets');
     }

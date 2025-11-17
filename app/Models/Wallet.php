@@ -10,10 +10,15 @@ class Wallet extends Model
 {
     use HasFactory;
 
-    protected $fillables = [
-        'user_id', 
+    protected $fillable = [
+        'user_id',
+        'address', 
         'currency', 
-        'balance'
+        'balance',
+    ];
+
+    protected $casts = [
+        'balance' => 'decimal:2'
     ];
 
     public function user() {

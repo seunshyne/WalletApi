@@ -6,9 +6,9 @@ use App\Http\Controllers\Api\WalletController;
 use App\Http\Controllers\Api\TransactionController;
 use App\Http\Controllers\Api\AuthController;
 
-// Route::get('/user', function (Request $request) {
-//     return $request->user();
-// })->middleware('auth:sanctum');
+ Route::get('/user', function (Request $request) {
+     return $request->user();
+ })->middleware('auth:sanctum');
 
 
 Route::middleware('auth:sanctum')->get('/transactions', [TransactionController::class, 'index']);
