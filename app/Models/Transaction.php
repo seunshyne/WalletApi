@@ -15,9 +15,21 @@ class Transaction extends Model
         'amount', 
         'reference', 
         'idempotency_key',
+        'description', 
+        'status',
+        'metadata' // Add metadata to fillable properties
+    ];
+    protected $casts = [
+        'metadata' => 'array', // Cast metadata as array
     ];
     public function wallet() {
         return $this->belongsTo(Wallet::class);
+    }
+
+    // Optional: if you want to link the recipient wallet
+    public function recipientWallet()
+    {
+        return $this->belongsTo(Wallet::class, 'recipient_wallet_id'); // assuming you store it in metadata
     }
 
 }
