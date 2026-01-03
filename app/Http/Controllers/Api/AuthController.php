@@ -9,32 +9,17 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Auth\Events\Verified;
 use Illuminate\Support\Facades\URL;
+use App\Jobs\SendVerificationEmail; 
 use App\Models\User;
 
 
 use Exception;
+use Illuminate\Foundation\Auth\EmailVerificationRequest;
 use Illuminate\Support\Facades\Log;
 
 class AuthController extends Controller
 {
-    public function verifyEmail($id, $hash)
-    {
-        $user = User::findOrFail($id);
-
-        // Check if hash matches
-        if (! hash_equals((string) $hash, sha1($user->email))) {
-            return response()->json(['message' => 'Invalid verification link'], 400);
-        }
-
-        if ($user->hasVerifiedEmail()) {
-            return response()->json(['message' => 'Email already verified']);
-        }
-
-        $user->markEmailAsVerified();
-        event(new Verified($user));
-
-        return response()->json(['message' => 'Email verified successfully']);
-    }
+   
     /**
      * Register a new user with automatic wallet creation
      */
@@ -57,7 +42,7 @@ class AuthController extends Controller
         ]);
 
         try {
-            $user = DB::transaction(function () use ($fields, &$user) {
+            $user = DB::transaction(function () use ($fields) {
 
                 // Create user
                 $user = User::create([
@@ -66,7 +51,7 @@ class AuthController extends Controller
                     'password' => Hash::make($fields['password']),
                 ]);
                 // Send email verification
-                $user->sendEmailVerificationNotification();
+                SendVerificationEmail::dispatch($user->id);
 
                 Log::info('User created', ['user_id' => $user->id]);
 
@@ -103,6 +88,56 @@ class AuthController extends Controller
         }
     }
 
+    //verify email via signed link
+     public function verifyEmail(Request $request, $id, $hash)
+{
+    $user = User::findOrFail($id);
+
+    if (! hash_equals(sha1($user->getEmailForVerification()), $hash)) {
+        return redirect(config('app.frontend_url') . '/verify-failed');
+    }
+
+    if (! $user->hasVerifiedEmail()) {
+        $user->markEmailAsVerified();
+        event(new Verified($user));
+    }
+
+    return redirect(config('app.frontend_url') . '/login?verified=1');
+}
+
+public function resendVerificationEmail(Request $request)
+{
+    $request->validate([
+        'email' => 'required|email|exists:users,email',
+    ]);
+
+    $user = User::where('email', $request->email)->first();
+
+    if (!$user) {
+        return response()->json([
+            'status' => 'error',
+            'message' => 'User not found',
+        ], 404);
+    }
+
+    if ($user->hasVerifiedEmail()) {
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Email already verified',
+        ]);
+    }
+
+    // Dispatch the job again
+    SendVerificationEmail::dispatch($user->id);
+
+    return response()->json([
+        'status' => 'success',
+        'message' => 'Verification email resent. Please check your inbox.',
+    ]);
+}
+
+
+
     /**
      * Log in a user
      */
@@ -125,12 +160,14 @@ class AuthController extends Controller
             }
 
             //Block login if email not verified
-            if (! $user->hasVerifiedEmail()) {
+            if (!$user->hasVerifiedEmail()) {
                 return response()->json([
-                    'status' => 'error',
-                    'message' => 'Please verify your email to activate your account.'
+                    'status' => 'unverified',
+                    'message' => 'Please verify your email to activate your account.',
+                    'email' => $user->email,
                 ], 403);
             }
+           
 
             // Get user's wallet
             $wallet = $user->wallet;
@@ -142,6 +179,7 @@ class AuthController extends Controller
                     'id' => $user->id,
                     'name' => $user->name,
                     'email' => $user->email,
+                    'email_verified_at' => $user->email_verified_at,
                 ],
                 'wallet' => $wallet,
                 'token' => $token,
