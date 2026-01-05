@@ -22,9 +22,9 @@ class StoreTransactionRequest extends FormRequest
     public function rules(): array
 {
     return [
-        'wallet_id' => 'required|exists:wallets,id',
+        //'wallet_id' => 'required|exists:wallets,id',
         'amount' => 'required|numeric|min:0.01',
-        'recipient_address' => 'required|string|exists:wallets,address',
+        'recipient' => 'required|string',
         'description' => 'nullable|string|max:255',
         'client_idempotency_key' => 'required|string|max:255',
         // 'type' removed

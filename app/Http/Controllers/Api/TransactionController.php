@@ -4,6 +4,8 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Transaction;
+use App\Models\Wallet;
+use App\Models\User;
 use Illuminate\Support\Facades\Auth;
 use App\Http\Requests\StoreTransactionRequest;
 use Illuminate\Http\Request;
@@ -20,7 +22,7 @@ class TransactionController extends Controller
         $this->transactionService = $transactionService;
     }
 
-   public function index(Request $request, TransactionService $transactionService)
+   public function index(Request $request)
 {
     $user = Auth::user();
 
@@ -34,7 +36,7 @@ class TransactionController extends Controller
 
 
     return response()->json(
-            $transactionService->getTransactions($filters, $perPage)
+            $this->transactionService->getTransactions($filters, $perPage)
         );
 }
 
@@ -108,7 +110,7 @@ class TransactionController extends Controller
         $validated = $request->validated();
 
         // Call the TransactionService
-        $result = $this->transactionService->transferByAddress($validated);
+        $result = $this->transactionService->transfer($validated);
 
         $statusCode = $result['status'] === 'success' ? 200 : ($result['code'] ?? 400);
 
@@ -132,6 +134,56 @@ class TransactionController extends Controller
         ], 500);
     }
 }
+
+// Resolve transaction recipient by email or wallet address(confirming details)
+public function resolve(Request $request)
+{
+    $request->validate([
+        'recipient' => 'required|string'
+    ]);
+
+    $input = $request->recipient;
+
+    // Case 1: Email
+    if (filter_var($input, FILTER_VALIDATE_EMAIL)) {
+        $user = User::where('email', $input)->first();
+
+        if (!$user || !$user->wallet) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'User not found'
+            ], 404);
+        }
+
+        return response()->json([
+            'status' => 'success',
+            'type' => 'email',
+            'name' => $user->name,
+            'email' => $user->email,
+            'wallet_address' => $user->wallet->address,
+            'verified' => $user->hasVerifiedEmail()
+        ]);
+    }
+
+    // Case 2: Wallet address
+    $wallet = Wallet::where('address', $input)->first();
+
+    if (!$wallet) {
+        return response()->json([
+            'status' => 'error',
+            'message' => 'Wallet not found'
+        ], 404);
+    }
+
+    return response()->json([
+        'status' => 'success',
+        'type' => 'wallet',
+        'name' => $wallet->user->name ?? 'Unknown',
+        'wallet_address' => $wallet->address,
+        'verified' => $wallet->user?->hasVerifiedEmail() ?? false
+    ]);
+}
+
 
 
     /**

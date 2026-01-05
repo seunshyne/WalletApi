@@ -5,8 +5,6 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\WalletController;
 use App\Http\Controllers\Api\TransactionController;
 use App\Http\Controllers\Api\AuthController;
-use App\Jobs\SendVerificationEmail;
-use Illuminate\Foundation\Auth\EmailVerificationRequest;
 
 // Email verification routes
 Route::get('/email/verify/{id}/{hash}', [AuthController::class, 'verifyEmail'])->middleware('signed')
@@ -15,6 +13,10 @@ Route::get('/email/verify/{id}/{hash}', [AuthController::class, 'verifyEmail'])-
 // Resend verification email
 Route::post('/email/resend', [AuthController::class, 'resendVerificationEmail'])
     ->middleware('throttle:6,1');
+
+// Transaction recipient resolution(confirming wallet address or user details)
+Route::post('/resolve-recipient', [TransactionController::class, 'resolve'])
+    ->middleware('auth:sanctum');
 
 
 // Auth routes (no authentication required)
@@ -32,9 +34,8 @@ Route::middleware('auth:sanctum')->group(function () {
     });
 
 
-    // Transactions
-    // Route::get('/transactions', [TransactionController::class, 'index']);
-    // Route::post('/transactions', [TransactionController::class, 'transfer'])->middleware('idempotent');
+    // Wallets routes
+    Route::get('/wallets', [WalletController::class, 'show']);
 
     // Logout
     Route::post('/auth/logout', [AuthController::class, 'logout']);

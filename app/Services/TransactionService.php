@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\User;
 use App\Models\Transaction;
 use App\Models\Wallet;
 use Illuminate\Support\Facades\DB;
@@ -32,6 +33,70 @@ class TransactionService
             'status' => 'error',
             'message' => $message,
             'code' => $code,
+        ];
+    }
+
+    /**
+     * Process a wallet transaction safely and idempotently.
+     *
+     * @param array{
+     *   wallet_id: int,
+     *   type: 'credit'|'debit',
+     *   amount: float,
+     *   reference: string,
+     *   idempotency_key: string
+     * } $data
+     *
+     * @return array{
+     *   status: string,
+     *   transaction: Transaction,
+     *   wallet_balance: float|null
+     * }
+     *
+     * @throws \Exception
+     */
+    public function process(array $data): array
+    {
+        // 1️⃣ Idempotency check
+        $existing = Transaction::where('idempotency_key', $data['idempotency_key'])->first();
+
+        if ($existing) {
+            return [
+                'status' => 'duplicate',
+                'transaction' => $existing,
+                'wallet_balance' => $existing->wallet->balance ?? null,
+            ];
+        }
+
+        // 2️⃣ Lock wallet row to avoid race conditions
+        $wallet = Wallet::where('id', $data['wallet_id'])->lockForUpdate()->firstOrFail();
+
+        // 3️⃣ Overdraft protection
+        if ($data['type'] === 'debit' && $wallet->balance < $data['amount']) {
+            throw new \Exception('Insufficient balance', 422);
+        }
+
+        // 4️⃣ Atomic transaction
+        $transaction = DB::transaction(function () use ($data, $wallet) {
+            $wallet->balance += $data['type'] === 'credit'
+                ? $data['amount']
+                : -$data['amount'];
+
+            $wallet->save();
+
+            return Transaction::create([
+                'wallet_id' => $wallet->id,
+                'type' => $data['type'],
+                'amount' => $data['amount'],
+                'reference' => $data['reference'],
+                'idempotency_key' => $data['idempotency_key'],
+            ]);
+        });
+
+        return [
+            'status' => 'success',
+            'transaction' => $transaction,
+            'wallet_balance' => $wallet->balance,
         ];
     }
 
@@ -156,12 +221,40 @@ class TransactionService
         return $result;
     }
 
-    
+    // Resolve recipient wallet by email or wallet address(sending by either wallet address or email)
+    private function resolveRecipientWallet(string $recipient): Wallet
+    {
+
+        // Sending via email
+        if (filter_var($recipient, FILTER_VALIDATE_EMAIL)) {
+            $user = User::where('email', $recipient)->first();
+
+            if (! $user->hasVerifiedEmail()) {
+                throw new Exception('Recipient email not verified', 403);
+            }
+
+
+            if (!$user || !$user->wallet) {
+                throw new Exception('Recipient user not found', 404);
+            }
+            return Wallet::where('id', $user->wallet->id)->lockForUpdate()->first();
+        }
+
+        // sending by wallet address
+        $wallet = Wallet::where('address', $recipient)->lockForUpdate()->first();
+
+        if (!$wallet) {
+            throw new Exception('Recipient wallet not found', 404);
+        }
+        return $wallet;
+    }
+
+
 
     /**
      * Transfer between wallets using addresses
      */
-    public function transferByAddress(array $data): array
+    public function transfer(array $data): array
     {
         DB::beginTransaction();
 
@@ -176,13 +269,12 @@ class TransactionService
                     'recipient_transaction' => $existingTransaction->type === 'credit' ? $existingTransaction : null,
                 ]);
             }
-            $senderWallet = Wallet::where('id', Auth::user()->wallet->id)->lockForUpdate()->first();
-;
+            $senderWallet = Wallet::where('id', Auth::user()->wallet->id)->lockForUpdate()->first();;
             if (!$senderWallet) {
                 return $this->errorResponse('Sender wallet not found', 404);
             }
 
-            $recipientWallet = Wallet::where('address', $data['recipient_address'])->lockForUpdate()->first();
+            $recipientWallet = $this->resolveRecipientWallet($data['recipient']);
             if (!$recipientWallet) {
                 return $this->errorResponse('Recipient wallet not found', 404);
             }
@@ -191,7 +283,7 @@ class TransactionService
                 return $this->errorResponse('You cannot transfer to your own wallet', 400);
             }
 
-            $amount = floatval($data['amount']);
+            $amount = (string)($data['amount']);
             if ($senderWallet->balance < $amount) {
                 return $this->errorResponse('Insufficient balance', 400);
             }
