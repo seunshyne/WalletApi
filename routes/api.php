@@ -23,7 +23,7 @@ Route::post('/resolve-recipient', [TransactionController::class, 'resolve'])
 Route::prefix('auth')->group(function () {
     Route::post('/register', [AuthController::class, 'register']);
     Route::post('/login', [AuthController::class, 'login']);
-});
+})->middleware('throttle:6,1');
 
 // Routes protected by Sanctum
 Route::middleware('auth:sanctum')->group(function () {

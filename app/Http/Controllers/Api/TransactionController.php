@@ -40,32 +40,6 @@ class TransactionController extends Controller
         );
 }
 
- // Fetch all transactions related to the logged-in user
-    // public function index()
-    // {
-    //     $transactions = Transaction::with(['sender', 'senderWallet', 'recipient', 'recipientWallet'])
-    //         ->where('sender_id', auth()->id())
-    //         ->orWhere('recipient_id', auth()->id())
-    //         ->orderBy('created_at', 'desc')
-    //         ->get();
-
-    //     return response()->json([
-    //         'transactions' => $transactions->map(function($tx) {
-    //             return [
-    //                 'id' => $tx->id,
-    //                 'amount' => $tx->amount,
-    //                 'type' => $tx->type,
-    //                 'created_at' => $tx->created_at->toDateTimeString(),
-    //                 'sender_name' => $tx->sender->name,
-    //                 'sender_address' => $tx->senderWallet->address,
-    //                 'recipient_name' => $tx->recipient->name,
-    //                 'recipient_address' => $tx->recipientWallet->address,
-    //             ];
-    //         })
-    //     ]);
-    // }
-
-
 
     public function store(StoreTransactionRequest $request)
     {
@@ -117,12 +91,12 @@ class TransactionController extends Controller
         return response()->json([
             'status' => $result['status'],
             'message' => $result['message'],
-            'reference' => $result['data']['reference'] ?? null,
-            'idempotency_key' => $result['data']['idempotency_key'] ?? null,
-            'sender_transaction' => $result['data']['sender_transaction'] ?? null,
-            'recipient_transaction' => $result['data']['recipient_transaction'] ?? null,
-            'wallet_balance' => $result['data']['wallet_balance'] ?? null,
-            'recipient_wallet_balance' => $result['data']['recipient_wallet_balance'] ?? null,
+            'reference' => $result['reference'] ?? null,
+            'idempotency_key' => $result['idempotency_key'] ?? null,
+            'sender_transaction' => $result['sender_transaction'] ?? null,
+            'recipient_transaction' => $result['recipient_transaction'] ?? null,
+            'wallet_balance' => $result['wallet_balance'] ?? null,
+            'recipient_wallet_balance' => $result['recipient_wallet_balance'] ?? null,
         ], $statusCode);
 
     } catch (Exception $e) {
@@ -146,7 +120,7 @@ public function resolve(Request $request)
 
     // Case 1: Email
     if (filter_var($input, FILTER_VALIDATE_EMAIL)) {
-        $user = User::where('email', $input)->first();
+        $user = User::where('email', '=', $input, 'and')->first();
 
         if (!$user || !$user->wallet) {
             return response()->json([

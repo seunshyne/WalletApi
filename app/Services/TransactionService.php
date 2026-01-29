@@ -58,7 +58,7 @@ class TransactionService
     public function process(array $data): array
     {
         // 1️⃣ Idempotency check
-        $existing = Transaction::where('idempotency_key', $data['idempotency_key'])->first();
+        $existing = Transaction::where('idempotency_key', '=', $data['idempotency_key'], 'and')->first();
 
         if ($existing) {
             return [
@@ -73,7 +73,7 @@ class TransactionService
 
         // 3️⃣ Overdraft protection
         if ($data['type'] === 'debit' && $wallet->balance < $data['amount']) {
-            throw new \Exception('Insufficient balance', 422);
+            throw new Exception('Insufficient balance', 422);
         }
 
         // 4️⃣ Atomic transaction
@@ -143,6 +143,7 @@ class TransactionService
                 'id'         => $transaction->id,
                 'amount'     => $transaction->amount,
                 'type'       => $transaction->type,
+                'description'=> $transaction->description,
                 'reference'  => $transaction->reference,
                 'created_at' => $transaction->created_at->toDateTimeString(),
             ];
@@ -227,15 +228,14 @@ class TransactionService
 
         // Sending via email
         if (filter_var($recipient, FILTER_VALIDATE_EMAIL)) {
-            $user = User::where('email', $recipient)->first();
-
-            if (! $user->hasVerifiedEmail()) {
-                throw new Exception('Recipient email not verified', 403);
-            }
-
+            $user = User::where('email', '=', $recipient, 'and')->first();
 
             if (!$user || !$user->wallet) {
                 throw new Exception('Recipient user not found', 404);
+            }
+
+            if (! $user->hasVerifiedEmail()) {
+                throw new Exception('Recipient email not verified', 403);
             }
             return Wallet::where('id', $user->wallet->id)->lockForUpdate()->first();
         }
@@ -260,7 +260,7 @@ class TransactionService
 
         try {
             //check if tranfer with same client_idempotency_key already exist
-            $existingTransaction = Transaction::where('idempotency_key', $data['client_idempotency_key'])->first();
+            $existingTransaction = Transaction::where('idempotency_key', '=', $data['client_idempotency_key'], 'and')->first();
             if ($existingTransaction) {
                 return $this->successResponse('Transfer already processed', [
                     'reference' => $existingTransaction->reference,
@@ -314,7 +314,7 @@ class TransactionService
             ]);
 
             // Credit recipient
-            $recipientWallet->balance += $amount;
+            $recipientWallet->balance += (string)$amount;
             $recipientWallet->save();
 
             $recipientTransaction = Transaction::create([
@@ -324,7 +324,7 @@ class TransactionService
                 'sender_address' => $senderWallet->address,
                 'reference' => $reference,
                 'idempotency_key' => $data['client_idempotency_key'],
-                'description' => "Received from {$senderWallet->address}",
+                'description' => $data['description'] ?? "Received from {$senderWallet->address}",
                 'status' => 'successful',
 
                 'metadata' => [

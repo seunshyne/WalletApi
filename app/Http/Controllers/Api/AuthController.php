@@ -111,7 +111,7 @@ public function resendVerificationEmail(Request $request)
         'email' => 'required|email|exists:users,email',
     ]);
 
-    $user = User::where('email', $request->email)->first();
+    $user = User::where('email', '=', $request->email, 'and')->first();
 
     if (!$user) {
         return response()->json([
@@ -149,7 +149,7 @@ public function resendVerificationEmail(Request $request)
                 'password' => 'required|string',
             ]);
 
-            $user = User::where('email', $fields['email'])->first();
+            $user = User::where('email', '=', $fields['email'], 'and')->first();
 
             if (!$user || !Hash::check($fields['password'], $user->password)) {
                 return response()->json([
