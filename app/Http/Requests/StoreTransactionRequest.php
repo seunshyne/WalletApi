@@ -20,14 +20,17 @@ class StoreTransactionRequest extends FormRequest
      * @return array<string, \Illuminate\Contracts\Validation\ValidationRule|array<mixed>|string>
      */
     public function rules(): array
-    {
-        return [
-            'wallet_id' => 'required|exists:wallets,id',
-            'type' => 'required|in:credit,debit',
-            'amount' => 'required|numeric|min:0.01',
-            'reference' => 'required|string|unique:transactions,reference',
-            'idempotency_key' => 'required|string|unique:transactions,idempotency_key',
+{
+    return [
+        //'wallet_id' => 'required|exists:wallets,id',
+        'amount' => 'required|numeric|min:0.01',
+        'recipient' => 'required|string',
+        'description' => 'nullable|string|max:255',
+        'client_idempotency_key' => 'required|string|max:255',
+        // 'type' removed
+        // 'recipient_description' removed
+        // 'reference' removed
+    ];
+}
 
-        ];
-    }
 }
