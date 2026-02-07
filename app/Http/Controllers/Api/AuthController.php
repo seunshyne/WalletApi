@@ -9,17 +9,18 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Auth\Events\Verified;
 use Illuminate\Support\Facades\URL;
-use App\Jobs\SendVerificationEmail; 
+use App\Jobs\SendVerificationEmail;
 use App\Models\User;
 
 
 use Exception;
 use Illuminate\Foundation\Auth\EmailVerificationRequest;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Validator;
 
 class AuthController extends Controller
 {
-   
+
     /**
      * Register a new user with automatic wallet creation
      */
@@ -28,7 +29,7 @@ class AuthController extends Controller
         Log::info('Register endpoint hit', ['data' => $request->email]);
 
 
-        $fields = $request->validate([
+        $validator = Validator::make($request->all(), [
             'name' => 'required|string|max:255',
             'email' => 'required|string|email|max:255|unique:users,email',
             'password' => 'required|string|confirmed|min:8',
@@ -40,6 +41,15 @@ class AuthController extends Controller
             'password.required' => 'Password is required',
             'password.confirmed' => 'Passwords do not match',
         ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'message' => 'Validation error',
+                'errors' => $validator->errors(),
+            ], 422);
+        }
+
+        $fields = $validator->validated();
 
         try {
             $user = DB::transaction(function () use ($fields) {
@@ -89,52 +99,52 @@ class AuthController extends Controller
     }
 
     //verify email via signed link
-     public function verifyEmail(Request $request, $id, $hash)
-{
-    $user = User::findOrFail($id);
+    public function verifyEmail(Request $request, $id, $hash)
+    {
+        $user = User::findOrFail($id);
 
-    if (! hash_equals(sha1($user->getEmailForVerification()), $hash)) {
-        return redirect(config('app.frontend_url') . '/verify-failed');
+        if (! hash_equals(sha1($user->getEmailForVerification()), $hash)) {
+            return redirect(config('app.frontend_url') . '/verify-failed');
+        }
+
+        if (! $user->hasVerifiedEmail()) {
+            $user->markEmailAsVerified();
+            event(new Verified($user));
+        }
+
+        return redirect(config('app.frontend_url') . '/login?verified=1');
     }
 
-    if (! $user->hasVerifiedEmail()) {
-        $user->markEmailAsVerified();
-        event(new Verified($user));
-    }
+    public function resendVerificationEmail(Request $request)
+    {
+        $request->validate([
+            'email' => 'required|email|exists:users,email',
+        ]);
 
-    return redirect(config('app.frontend_url') . '/login?verified=1');
-}
+        $user = User::where('email', '=', $request->email, 'and')->first();
 
-public function resendVerificationEmail(Request $request)
-{
-    $request->validate([
-        'email' => 'required|email|exists:users,email',
-    ]);
+        if (!$user) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'User not found',
+            ], 404);
+        }
 
-    $user = User::where('email', '=', $request->email, 'and')->first();
+        if ($user->hasVerifiedEmail()) {
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Email already verified',
+            ]);
+        }
 
-    if (!$user) {
-        return response()->json([
-            'status' => 'error',
-            'message' => 'User not found',
-        ], 404);
-    }
+        // Dispatch the job again
+        SendVerificationEmail::dispatch($user->id);
 
-    if ($user->hasVerifiedEmail()) {
         return response()->json([
             'status' => 'success',
-            'message' => 'Email already verified',
+            'message' => 'Verification email resent. Please check your inbox.',
         ]);
     }
-
-    // Dispatch the job again
-    SendVerificationEmail::dispatch($user->id);
-
-    return response()->json([
-        'status' => 'success',
-        'message' => 'Verification email resent. Please check your inbox.',
-    ]);
-}
 
 
 
@@ -167,7 +177,7 @@ public function resendVerificationEmail(Request $request)
                     'email' => $user->email,
                 ], 403);
             }
-           
+
 
             // Get user's wallet
             $wallet = $user->wallet;

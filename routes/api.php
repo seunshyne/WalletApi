@@ -18,12 +18,22 @@ Route::post('/email/resend', [AuthController::class, 'resendVerificationEmail'])
 Route::post('/resolve-recipient', [TransactionController::class, 'resolve'])
     ->middleware('auth:sanctum');
 
+Route::prefix('auth')->group(function () {
+    Route::post('/register', [AuthController::class, 'register'])
+        ->middleware('throttle:6,1');
+
+    Route::post('/login', [AuthController::class, 'login'])
+        ->middleware('throttle:6,1');
+});
+
 
 // Auth routes (no authentication required)
-Route::prefix('auth')->group(function () {
-    Route::post('/register', [AuthController::class, 'register']);
-    Route::post('/login', [AuthController::class, 'login']);
-})->middleware('throttle:6,1');
+Route::post('/register', [AuthController::class, 'register'])
+    ->middleware('throttle:6,1');
+
+Route::post('/login', [AuthController::class, 'login'])
+    ->middleware('throttle:6,1');
+
 
 // Routes protected by Sanctum
 Route::middleware('auth:sanctum')->group(function () {
