@@ -4,57 +4,58 @@ namespace App\Services;
 
 use App\Models\Wallet;
 use App\Models\Transaction;
+use App\Models\User;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
+use Illuminate\Support\Facades\Cache;
+use Exception;
 
 class WalletService
 {
-    public function credit(Wallet $wallet, float $amount)
+    /** Standard success response */
+    protected function successResponse(string $message, $data = [], int $code = 200): array
     {
-        return DB::transaction(function () use ($wallet, $amount) {
-            $wallet->balance += $amount;
-            $wallet->save();
+        return [
+            'status' => 'success',
+            'message' => $message,
+            'data' => $data,
+            'code' => $code,
+        ];
+    }
 
-            $transaction = Transaction::create([
-                'wallet_id' => $wallet->id,
-                'type' => 'credit',
-                'amount' => $amount,
-                'reference' => Str::uuid(),
+    public function createForUser(User $user) {
+                if ($user->wallet) {
+                return;
+            }
+            Wallet::firstOrCreate([
+                'user_id' => $user->id],
+                [
+                'address' => $this->generateAddress(),
+                'balance' => 0.00,
+                'currency' => 'NGN',
             ]);
-
-            return [
-                'transaction' => $transaction,
-                'balance' => $wallet->balance
-            ];
-        });
     }
 
-    public function debit(Wallet $wallet, float $amount)
+    public function generateAddress(): string
     {
-        if ($wallet->balance < $amount) {
-            throw new \Exception('Insufficient balance');
-        }
-
-        return DB::transaction(function () use ($wallet, $amount) {
-            $wallet->balance -= $amount;
-            $wallet->save();
-
-            $transaction = Transaction::create([
-                'wallet_id' => $wallet->id,
-                'type' => 'debit',
-                'amount' => $amount,
-                'reference' => Str::uuid(),
-            ]);
-
-            return [
-                'transaction' => $transaction,
-                'balance' => $wallet->balance
-            ];
-        });
+        return 'WAL' . str_pad(random_int(0, 9999999), 7, '0', STR_PAD_LEFT);
     }
 
-    public function transactions(Wallet $wallet)
+    /** Standard error response */
+    protected function errorResponse(string $message, int $code = 400): array
     {
-        return $wallet->transactions()->latest()->get();
+        return [
+            'status' => 'error',
+            'message' => $message,
+            'code' => $code,
+        ];
     }
+
+
+    
+    
+
+    
+   
 }
