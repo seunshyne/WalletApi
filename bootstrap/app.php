@@ -15,6 +15,7 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->alias([
             'idempotent' => App\Http\Middleware\IdempotencyMiddleware::class,
+            'csrf.specific' => App\Http\Middleware\VerifySpecificCsrfToken::class,
         ]);
 
         $middleware->api(prepend: [

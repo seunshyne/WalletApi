@@ -32,6 +32,7 @@ Route::post('/register', [AuthController::class, 'register'])
     ->middleware('throttle:6,1');
 
 Route::post('/login', [AuthController::class, 'login'])
+    ->middleware('csrf.specific')
     ->middleware('throttle:6,1');
 
 
