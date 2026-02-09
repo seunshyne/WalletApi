@@ -170,13 +170,13 @@ class AuthController extends Controller
             }
 
             //Block login if email not verified
-            if (!$user->hasVerifiedEmail()) {
-                return response()->json([
-                    'status' => 'unverified',
-                    'message' => 'Please verify your email to activate your account.',
-                    'email' => $user->email,
-                ], 403);
-            }
+            // if (!$user->hasVerifiedEmail()) {
+            //     return response()->json([
+            //         'status' => 'unverified',
+            //         'message' => 'Please verify your email to activate your account.',
+            //         'email' => $user->email,
+            //     ], 403);
+            // }
 
 
             // Get user's wallet

@@ -7,17 +7,21 @@ use App\Http\Controllers\Api\TransactionController;
 use App\Http\Controllers\Api\AuthController;
 
 // Email verification routes
-Route::get('/email/verify/{id}/{hash}', [AuthController::class, 'verifyEmail'])->middleware('signed')
+Route::get('/email/verify/{id}/{hash}', [AuthController::class, 'verifyEmail'])
+    ->middleware('signed')
     ->name('verification.verify');
 
 // Resend verification email
 Route::post('/email/resend', [AuthController::class, 'resendVerificationEmail'])
     ->middleware('throttle:6,1');
 
-// Transaction recipient resolution(confirming wallet address or user details)
+// Transaction recipient resolution (requires authentication)
 Route::post('/resolve-recipient', [TransactionController::class, 'resolve'])
     ->middleware('auth:sanctum');
 
+// --------------------
+// Auth routes (no authentication required)
+// --------------------
 Route::prefix('auth')->group(function () {
     Route::post('/register', [AuthController::class, 'register'])
         ->middleware('throttle:6,1');
@@ -26,44 +30,23 @@ Route::prefix('auth')->group(function () {
         ->middleware('throttle:6,1');
 });
 
-
-// Auth routes (no authentication required)
-Route::post('/register', [AuthController::class, 'register'])
-    ->middleware('throttle:6,1');
-
-Route::post('/login', [AuthController::class, 'login'])
-    ->middleware('throttle:6,1');
-
-
-// Routes protected by Sanctum
+// --------------------
+// Protected routes (requires Sanctum authentication)
+// --------------------
 Route::middleware('auth:sanctum')->group(function () {
+
+    // Auth
+    Route::post('/auth/logout', [AuthController::class, 'logout']);
 
     // Get authenticated user
-    Route::get('/user', function (Request $request) {
-        return $request->user();
-    });
-
-
-    // Wallets routes
-    Route::get('/wallets', [WalletController::class, 'show']);
-
-    // Logout
-    Route::post('/auth/logout', [AuthController::class, 'logout']);
-});
-
-
-
-
-// Protected routes
-Route::middleware('auth:sanctum')->group(function () {
-
-    // Auth routes
-    Route::post('/auth/logout', [AuthController::class, 'logout']);
     Route::get('/user', function (Request $request) {
         return response()->json(['user' => $request->user()]);
     });
 
-    // Transaction routes (if you want to use TransactionController directly)
+    // Wallets
+    Route::get('/wallets', [WalletController::class, 'show']);
+
+    // Transactions
     Route::prefix('transactions')->group(function () {
         Route::get('/', [TransactionController::class, 'index']);
         Route::post('/', [TransactionController::class, 'store']);
