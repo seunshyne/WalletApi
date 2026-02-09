@@ -19,7 +19,7 @@ return [
 
     'allowed_methods' => ['*'],
 
-    'allowed_origins' => ['https://walletqua.vercel.app'],
+    'allowed_origins' => ['https://app-primewallet.duckdns.org'],
 
     'allowed_origins_patterns' => [],
 

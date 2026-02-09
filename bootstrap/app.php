@@ -22,6 +22,9 @@ return Application::configure(basePath: dirname(__DIR__))
             \Laravel\Sanctum\Http\Middleware\EnsureFrontendRequestsAreStateful::class,
         ]);
 
+        // Ensure stateful API requests also start the session
+        $middleware->statefulApi();
+
         $middleware->append(
             \Illuminate\Http\Middleware\HandleCors::class
         );
