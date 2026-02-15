@@ -3,7 +3,7 @@
 namespace App\Jobs;
 
 use App\Models\User;
-use Illuminate\Auth\Notifications\VerifyEmail;
+
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Foundation\Queue\Queueable;
@@ -13,7 +13,7 @@ use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\URL;
 use Carbon\Carbon;
 use App\Mail\VerifyEmailMail;
-use Illuminate\Contracts\Mail\Mailable;
+
 
 
 
@@ -39,7 +39,8 @@ class SendVerificationEmail implements ShouldQueue
     {
         $user = User::findOrFail($this->userId);
 
-        $verificationUrl = URL::temporarySignedRoute(
+        // Generate signed URL for email verification
+        $backendUrl = URL::temporarySignedRoute(
         'verification.verify',
         Carbon::now()->addMinutes(60),
         [
@@ -47,6 +48,14 @@ class SendVerificationEmail implements ShouldQueue
             'hash' => sha1($user->email),
         ]
     );
+
+    //Extract query string (expires + signature)
+    $query = parse_url($backendUrl, PHP_URL_QUERY);
+
+    // 3️⃣ Build frontend URL
+    $verificationUrl = config('app.frontend_url')
+        . "/verify-email/{$user->id}/" . sha1($user->email)
+        . "?{$query}";
 
     Mail::to($user->email)
         ->send(new VerifyEmailMail($verificationUrl));
