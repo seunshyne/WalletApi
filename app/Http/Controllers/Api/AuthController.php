@@ -6,15 +6,10 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Str;
 use Illuminate\Auth\Events\Verified;
-use Illuminate\Support\Facades\URL;
 use App\Jobs\SendVerificationEmail;
 use App\Models\User;
-
-
 use Exception;
-use Illuminate\Foundation\Auth\EmailVerificationRequest;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
 
@@ -99,20 +94,36 @@ class AuthController extends Controller
     }
 
     //verify email via signed link
-    public function verifyEmail(Request $request, $id, $hash)
+        public function verifyEmail(Request $request, $id, $hash)
     {
-        $user = User::findOrFail($id);
+        try {
 
-        if (! hash_equals(sha1($user->getEmailForVerification()), $hash)) {
+            // Validate signed URL (signature + expiry)
+            if (! $request->hasValidSignature()) {
+                return redirect(config('app.frontend_url') . '/verify-failed');
+            }
+
+            $user = User::findOrFail($id);
+
+            if (! hash_equals(sha1($user->getEmailForVerification()), $hash)) {
+                return redirect(config('app.frontend_url') . '/verify-failed');
+            }
+
+            if (! $user->hasVerifiedEmail()) {
+                $user->markEmailAsVerified();
+                event(new Verified($user));
+            }
+
+            return redirect(config('app.frontend_url') . '/login?verified=1');
+
+        } catch (Exception $e) {
+
+            Log::warning('Email verification failed', [
+                'error' => $e->getMessage(),
+            ]);
+
             return redirect(config('app.frontend_url') . '/verify-failed');
         }
-
-        if (! $user->hasVerifiedEmail()) {
-            $user->markEmailAsVerified();
-            event(new Verified($user));
-        }
-
-        return redirect(config('app.frontend_url') . '/login?verified=1');
     }
 
     public function resendVerificationEmail(Request $request)
@@ -121,7 +132,7 @@ class AuthController extends Controller
             'email' => 'required|email|exists:users,email',
         ]);
 
-        $user = User::where('email', '=', $request->email, 'and')->first();
+        $user = User::where('email', $request->email)->first();
 
         if (!$user) {
             return response()->json([
@@ -159,7 +170,7 @@ class AuthController extends Controller
                 'password' => 'required|string',
             ]);
 
-            $user = User::where('email', '=', $fields['email'], 'and')->first();
+            $user = User::where('email', $fields['email'])->first();
 
             if (!$user || !Hash::check($fields['password'], $user->password)) {
                 return response()->json([
@@ -167,16 +178,16 @@ class AuthController extends Controller
                         'email' => ['The provided credentials are incorrect.']
                     ]
                 ], 401);
-            }
+            } 
 
             //Block login if email not verified
-            // if (!$user->hasVerifiedEmail()) {
-            //     return response()->json([
-            //         'status' => 'unverified',
-            //         'message' => 'Please verify your email to activate your account.',
-            //         'email' => $user->email,
-            //     ], 403);
-            // }
+            if (!$user->hasVerifiedEmail()) {
+                return response()->json([
+                    'status' => 'unverified',
+                    'message' => 'Please verify your email to activate your account.',
+                    'email' => $user->email,
+                ], 403);
+            }
 
 
             // Get user's wallet
@@ -209,15 +220,25 @@ class AuthController extends Controller
     public function logout(Request $request)
     {
         try {
-            $request->user()->currentAccessToken()->delete();
 
-            return response()->json(['message' => 'Logged out successfully']);
+            if ($request->user() && $request->user()->currentAccessToken()) {
+                $request->user()->currentAccessToken()->delete();
+            }
+
+            return response()->json([
+                'message' => 'Logged out successfully'
+            ]);
+
         } catch (Exception $e) {
-            Log::error('Logout failed', ['error' => $e->getMessage()]);
+
+            Log::error('Logout failed', [
+                'error' => $e->getMessage()
+            ]);
 
             return response()->json([
                 'message' => 'Logout failed'
             ], 500);
         }
     }
+
 }
