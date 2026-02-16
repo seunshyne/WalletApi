@@ -95,36 +95,63 @@ class AuthController extends Controller
 
     //verify email via signed link
         public function verifyEmail(Request $request, $id, $hash)
-    {
-        try {
-
-            // Validate signed URL (signature + expiry)
-            if (! $request->hasValidSignature()) {
-                return redirect(config('app.frontend_url') . '/verify-failed');
-            }
-
-            $user = User::findOrFail($id);
-
-            if (! hash_equals(sha1($user->getEmailForVerification()), $hash)) {
-                return redirect(config('app.frontend_url') . '/verify-failed');
-            }
-
-            if (! $user->hasVerifiedEmail()) {
-                $user->markEmailAsVerified();
-                event(new Verified($user));
-            }
-
-            return redirect(config('app.frontend_url') . '/login?verified=1');
-
-        } catch (Exception $e) {
-
-            Log::warning('Email verification failed', [
-                'error' => $e->getMessage(),
-            ]);
-
-            return redirect(config('app.frontend_url') . '/verify-failed');
+{
+    try {
+        // Validate signed URL (signature + expiry)
+        if (!$request->hasValidSignature()) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'This verification link has expired or is invalid.'
+            ], 403);
         }
+
+        $user = User::findOrFail($id);
+
+        // Verify hash matches
+        if (!hash_equals(sha1($user->getEmailForVerification()), $hash)) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Invalid verification link.'
+            ], 403);
+        }
+
+        // Check if already verified
+        if ($user->hasVerifiedEmail()) {
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Email already verified.',
+                'already_verified' => true
+            ], 200);
+        }
+
+        // Mark as verified
+        $user->markEmailAsVerified();
+        event(new Verified($user));
+
+        Log::info('Email verified successfully', ['user_id' => $user->id]);
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Email verified successfully.'
+        ], 200);
+
+    } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+        return response()->json([
+            'status' => 'error',
+            'message' => 'User not found.'
+        ], 404);
+    } catch (Exception $e) {
+        Log::error('Email verification failed', [
+            'error' => $e->getMessage(),
+            'trace' => $e->getTraceAsString()
+        ]);
+
+        return response()->json([
+            'status' => 'error',
+            'message' => 'Verification failed. Please try again.'
+        ], 500);
     }
+}
 
     public function resendVerificationEmail(Request $request)
     {
