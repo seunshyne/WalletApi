@@ -94,64 +94,39 @@ class AuthController extends Controller
     }
 
     //verify email via signed link
-        public function verifyEmail(Request $request, $id, $hash)
+       public function verifyEmail(Request $request, $id, $hash)
 {
     try {
-        // Validate signed URL (signature + expiry)
-        if (!$request->hasValidSignature()) {
-            return response()->json([
-                'status' => 'error',
-                'message' => 'This verification link has expired or is invalid.'
-            ], 403);
+        if (! $request->hasValidSignature()) {
+            return redirect(config('app.frontend_url') . '/login?verified=invalid');
         }
 
         $user = User::findOrFail($id);
 
-        // Verify hash matches
-        if (!hash_equals(sha1($user->getEmailForVerification()), $hash)) {
-            return response()->json([
-                'status' => 'error',
-                'message' => 'Invalid verification link.'
-            ], 403);
+        if (! hash_equals(sha1($user->getEmailForVerification()), $hash)) {
+            return redirect(config('app.frontend_url') . '/login?verified=invalid');
         }
 
-        // Check if already verified
         if ($user->hasVerifiedEmail()) {
-            return response()->json([
-                'status' => 'success',
-                'message' => 'Email already verified.',
-                'already_verified' => true
-            ], 200);
+            return redirect(config('app.frontend_url') . '/login?verified=already');
         }
 
-        // Mark as verified
         $user->markEmailAsVerified();
         event(new Verified($user));
 
         Log::info('Email verified successfully', ['user_id' => $user->id]);
 
-        return response()->json([
-            'status' => 'success',
-            'message' => 'Email verified successfully.'
-        ], 200);
+        return redirect(config('app.frontend_url') . '/login?verified=success');
 
-    } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
-        return response()->json([
-            'status' => 'error',
-            'message' => 'User not found.'
-        ], 404);
     } catch (Exception $e) {
         Log::error('Email verification failed', [
-            'error' => $e->getMessage(),
-            'trace' => $e->getTraceAsString()
+            'error' => $e->getMessage()
         ]);
 
-        return response()->json([
-            'status' => 'error',
-            'message' => 'Verification failed. Please try again.'
-        ], 500);
+        return redirect(config('app.frontend_url') . '/login?verified=error');
     }
 }
+
 
     public function resendVerificationEmail(Request $request)
     {

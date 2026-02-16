@@ -40,7 +40,7 @@ class SendVerificationEmail implements ShouldQueue
         $user = User::findOrFail($this->userId);
 
         // Generate signed URL for email verification
-        $backendUrl = URL::temporarySignedRoute(
+        $verificationUrl = URL::temporarySignedRoute(
         'verification.verify',
         Carbon::now()->addMinutes(60),
         [
@@ -48,14 +48,6 @@ class SendVerificationEmail implements ShouldQueue
             'hash' => sha1($user->email),
         ]
     );
-
-    //Extract query string (expires + signature)
-    $query = parse_url($backendUrl, PHP_URL_QUERY);
-
-    // 3️⃣ Build frontend URL
-    $verificationUrl = config('app.frontend_url')
-        . "/verify-email/{$user->id}/" . sha1($user->email)
-        . "?{$query}";
 
     Mail::to($user->email)
         ->send(new VerifyEmailMail($verificationUrl));
