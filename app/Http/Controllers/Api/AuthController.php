@@ -97,20 +97,24 @@ class AuthController extends Controller
        public function verifyEmail(Request $request, $id, $hash)
 {
     try {
-        if (! $request->hasValidSignature()) {
+        // Check valid signature
+        if (!$request->hasValidSignature()) {
             return redirect(config('app.frontend_url') . '/login?verified=invalid');
         }
 
         $user = User::findOrFail($id);
 
-        if (! hash_equals(sha1($user->getEmailForVerification()), $hash)) {
+        // Check hash matches
+        if (!hash_equals(sha1($user->getEmailForVerification()), (string) $hash)) {
             return redirect(config('app.frontend_url') . '/login?verified=invalid');
         }
 
+        // Already verified
         if ($user->hasVerifiedEmail()) {
             return redirect(config('app.frontend_url') . '/login?verified=already');
         }
 
+        // Mark as verified and fire event
         $user->markEmailAsVerified();
         event(new Verified($user));
 
