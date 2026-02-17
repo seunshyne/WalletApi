@@ -3,12 +3,8 @@
 namespace App\Services;
 
 use App\Models\Wallet;
-use App\Models\Transaction;
 use App\Models\User;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Str;
-use Illuminate\Support\Facades\Cache;
 use Exception;
 
 class WalletService
@@ -25,17 +21,24 @@ class WalletService
     }
 
     public function createForUser(User $user) {
-                if ($user->wallet) {
-                return;
-            }
-            Wallet::firstOrCreate([
-                'user_id' => $user->id],
-                [
+    if ($user->wallet) {
+        return;
+    }
+
+    try {
+        Wallet::firstOrCreate(
+            ['user_id' => $user->id],
+            [
                 'address' => $this->generateAddress(),
                 'balance' => 0.00,
                 'currency' => 'NGN',
-            ]);
+            ]
+        );
+    } catch (Exception $e) {
+        Log::error('Wallet creation failed for user '.$user->id.': '.$e->getMessage());
     }
+}
+
 
     public function generateAddress(): string
     {
@@ -51,11 +54,5 @@ class WalletService
             'code' => $code,
         ];
     }
-
-
-    
-    
-
-    
    
 }

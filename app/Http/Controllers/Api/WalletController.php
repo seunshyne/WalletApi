@@ -7,9 +7,7 @@ use App\Models\Wallet;
 use App\Services\WalletService;
 use App\Services\TransactionService;
 use Illuminate\Http\Request;
-use Illuminate\Validation\ValidationException;
 use Illuminate\Support\Facades\Log;
-use App\Http\Requests\StoreTransactionRequest;
 
 use Exception;
 
