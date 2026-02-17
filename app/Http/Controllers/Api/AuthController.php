@@ -97,21 +97,26 @@ class AuthController extends Controller
        public function verifyEmail(Request $request, $id, $hash)
 {
     try {
-        // Check valid signature
-        if (!$request->hasValidSignature()) {
-            return redirect(config('app.frontend_url') . '/login?verified=invalid');
-        }
-
         $user = User::findOrFail($id);
 
-        // Check hash matches
+        // Check hash matches first (before signature check)
         if (!hash_equals(sha1($user->getEmailForVerification()), (string) $hash)) {
             return redirect(config('app.frontend_url') . '/login?verified=invalid');
         }
 
-        // Already verified
+        // Already verified - redirect to success
         if ($user->hasVerifiedEmail()) {
             return redirect(config('app.frontend_url') . '/login?verified=already');
+        }
+
+        // Manually validate signature (more reliable)
+        if (!$request->hasValidSignature()) {
+            // Log what's happening
+            Log::warning('Invalid signature', [
+                'url' => $request->fullUrl(),
+                'user_id' => $id,
+            ]);
+            return redirect(config('app.frontend_url') . '/login?verified=invalid');
         }
 
         // Mark as verified and fire event
@@ -122,9 +127,10 @@ class AuthController extends Controller
 
         return redirect(config('app.frontend_url') . '/login?verified=success');
 
-    } catch (Exception $e) {
+    } catch (\Exception $e) {
         Log::error('Email verification failed', [
-            'error' => $e->getMessage()
+            'error' => $e->getMessage(),
+            'trace' => $e->getTraceAsString(),
         ]);
 
         return redirect(config('app.frontend_url') . '/login?verified=error');

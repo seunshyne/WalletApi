@@ -13,8 +13,7 @@ use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\URL;
 use Carbon\Carbon;
 use App\Mail\VerifyEmailMail;
-
-
+use Illuminate\Support\Facades\Log;
 
 
 
@@ -52,6 +51,11 @@ class SendVerificationEmail implements ShouldQueue
             'hash' => sha1($user->email),
         ]
     );
+
+    Log::info('Verification URL generated', [
+        'url' => $verificationUrl,
+        'user_id' => $user->id
+    ]);
 
     Mail::to($user->email)
         ->send(new VerifyEmailMail($verificationUrl));
