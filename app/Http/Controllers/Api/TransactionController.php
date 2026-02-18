@@ -109,15 +109,17 @@ class TransactionController extends Controller
     // Resolve transaction recipient by email or wallet address(confirming details)
     public function resolve(Request $request)
     {
-        $request->validate([
+        $validated = $request->validate([
             'recipient' => 'required|string'
         ]);
 
-        $input = $request->recipient;
+        $input = trim($validated['recipient']);
 
         // Case 1: Email
         if (filter_var($input, FILTER_VALIDATE_EMAIL)) {
-            $user = User::where('email', '=', $input, 'and')->first();
+            $user = User::where('email', $input)
+                ->with('wallet')
+                ->first();
 
             if (!$user || !$user->wallet) {
                 return response()->json([
@@ -137,7 +139,9 @@ class TransactionController extends Controller
         }
 
         // Case 2: Wallet address
-        $wallet = Wallet::where('address', $input)->first();
+        $wallet = Wallet::where('address', $input)
+            ->with('user')
+            ->first();
 
         if (!$wallet) {
             return response()->json([
