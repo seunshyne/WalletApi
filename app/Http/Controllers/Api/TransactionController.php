@@ -3,7 +3,6 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Models\Transaction;
 use App\Models\Wallet;
 use App\Models\User;
 use Illuminate\Support\Facades\Auth;
@@ -22,23 +21,23 @@ class TransactionController extends Controller
         $this->transactionService = $transactionService;
     }
 
-   public function index(Request $request)
-{
-    $user = Auth::user();
+    public function index(Request $request)
+    {
+        $user = Auth::user();
 
-     $filters = $request->only([
+        $filters = $request->only([
             'type',
             'start_date',
             'end_date'
         ]);
-        
+
         $perPage = (int) $request->get('per_page', 20);
 
 
-    return response()->json(
+        return response()->json(
             $this->transactionService->getTransactions($filters, $perPage)
         );
-}
+    }
 
 
     public function store(StoreTransactionRequest $request)
@@ -62,7 +61,6 @@ class TransactionController extends Controller
             }
 
             return response()->json($response, 200);
-
         } catch (Exception $e) {
             return response()->json([
                 'status' => 'error',
@@ -74,116 +72,86 @@ class TransactionController extends Controller
     /**
      * Transfer between wallets using addresses
      */
-   
-   public function transfer(StoreTransactionRequest $request)
-{
-    Log::info('Incoming transfer request:', $request->all());
 
-    try {
-        // Get validated data
-        $validated = $request->validated();
+    public function transfer(StoreTransactionRequest $request)
+    {
+        Log::info('Incoming transfer request:', $request->all());
 
-        // Call the TransactionService
-        $result = $this->transactionService->transfer($validated);
+        try {
+            // Get validated data
+            $validated = $request->validated();
 
-        $statusCode = $result['status'] === 'success' ? 200 : ($result['code'] ?? 400);
+            // Call the TransactionService
+            $result = $this->transactionService->transfer($validated);
 
-        return response()->json([
-            'status' => $result['status'],
-            'message' => $result['message'],
-            'reference' => $result['reference'] ?? null,
-            'idempotency_key' => $result['idempotency_key'] ?? null,
-            'sender_transaction' => $result['sender_transaction'] ?? null,
-            'recipient_transaction' => $result['recipient_transaction'] ?? null,
-            'wallet_balance' => $result['wallet_balance'] ?? null,
-            'recipient_wallet_balance' => $result['recipient_wallet_balance'] ?? null,
-        ], $statusCode);
+            $statusCode = $result['status'] === 'success' ? 200 : ($result['code'] ?? 400);
 
-    } catch (Exception $e) {
-        Log::error('Transfer error: ' . $e->getMessage());
+            return response()->json([
+                'status' => $result['status'],
+                'message' => $result['message'],
+                'reference' => $result['reference'] ?? null,
+                'idempotency_key' => $result['idempotency_key'] ?? null,
+                'sender_transaction' => $result['sender_transaction'] ?? null,
+                'recipient_transaction' => $result['recipient_transaction'] ?? null,
+                'wallet_balance' => $result['wallet_balance'] ?? null,
+                'recipient_wallet_balance' => $result['recipient_wallet_balance'] ?? null,
+            ], $statusCode);
+        } catch (Exception $e) {
+            Log::error('Transfer error: ' . $e->getMessage());
 
-        return response()->json([
-            'status' => 'error',
-            'message' => 'Unable to complete transfer'
-        ], 500);
-    }
-}
-
-// Resolve transaction recipient by email or wallet address(confirming details)
-public function resolve(Request $request)
-{
-    $request->validate([
-        'recipient' => 'required|string'
-    ]);
-
-    $input = $request->recipient;
-
-    // Case 1: Email
-    if (filter_var($input, FILTER_VALIDATE_EMAIL)) {
-        $user = User::where('email', '=', $input, 'and')->first();
-
-        if (!$user || !$user->wallet) {
             return response()->json([
                 'status' => 'error',
-                'message' => 'User not found'
+                'message' => 'Unable to complete transfer'
+            ], 500);
+        }
+    }
+
+    // Resolve transaction recipient by email or wallet address(confirming details)
+    public function resolve(Request $request)
+    {
+        $request->validate([
+            'recipient' => 'required|string'
+        ]);
+
+        $input = $request->recipient;
+
+        // Case 1: Email
+        if (filter_var($input, FILTER_VALIDATE_EMAIL)) {
+            $user = User::where('email', '=', $input, 'and')->first();
+
+            if (!$user || !$user->wallet) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'User not found'
+                ], 404);
+            }
+
+            return response()->json([
+                'status' => 'success',
+                'type' => 'email',
+                'name' => $user->name,
+                'email' => $user->email,
+                'wallet_address' => $user->wallet->address,
+                'verified' => $user->hasVerifiedEmail()
+            ]);
+        }
+
+        // Case 2: Wallet address
+        $wallet = Wallet::where('address', $input)->first();
+
+        if (!$wallet) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Wallet not found'
             ], 404);
         }
 
         return response()->json([
             'status' => 'success',
-            'type' => 'email',
-            'name' => $user->name,
-            'email' => $user->email,
-            'wallet_address' => $user->wallet->address,
-            'verified' => $user->hasVerifiedEmail()
+            'type' => 'wallet',
+            'name' => $wallet->user->name ?? 'Unknown',
+            'wallet_address' => $wallet->address,
+            'verified' => $wallet->user?->hasVerifiedEmail() ?? false
         ]);
     }
-
-    // Case 2: Wallet address
-    $wallet = Wallet::where('address', $input)->first();
-
-    if (!$wallet) {
-        return response()->json([
-            'status' => 'error',
-            'message' => 'Wallet not found'
-        ], 404);
-    }
-
-    return response()->json([
-        'status' => 'success',
-        'type' => 'wallet',
-        'name' => $wallet->user->name ?? 'Unknown',
-        'wallet_address' => $wallet->address,
-        'verified' => $wallet->user?->hasVerifiedEmail() ?? false
-    ]);
-}
-
-
-
-    /**
-     * Get transaction history
-     */
-    /*
-    public function index(Request $request)
-    {
-        try {
-            $filters = $request->only(['wallet_id', 'wallet_address', 'type', 'status', 'start_date', 'end_date', 'has_recipient']);
-            $perPage = $request->get('per_page', 20);
-
-            $result = $this->transactionService->getTransactions($filters, $perPage);
-
-            return response()->json([
-                'status' => 'success',
-                'data' => $result['data'],
-                'meta' => $result['meta'],
-                'filters' => $result['filters']
-            ], 200);
-
-        } catch (Exception $e) {
-            return response()->json([
-                'status' => 'error',
-                'message' => $e->getMessage()
-            ], 500);
-        }
-    } */
 }
