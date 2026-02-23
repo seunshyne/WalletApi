@@ -10,7 +10,8 @@ use App\Http\Requests\StoreTransactionRequest;
 use Illuminate\Http\Request;
 use App\Services\TransactionService;
 use Illuminate\Support\Facades\Log;
-use Exception;
+use Illuminate\Support\Str;
+use Throwable;
 
 class TransactionController extends Controller
 {
@@ -61,7 +62,7 @@ class TransactionController extends Controller
             }
 
             return response()->json($response, 200);
-        } catch (Exception $e) {
+        } catch (Throwable $e) {
             return response()->json([
                 'status' => 'error',
                 'message' => $e->getMessage()
@@ -96,12 +97,27 @@ class TransactionController extends Controller
                 'wallet_balance' => $result['wallet_balance'] ?? null,
                 'recipient_wallet_balance' => $result['recipient_wallet_balance'] ?? null,
             ], $statusCode);
-        } catch (Exception $e) {
-            Log::error('Transfer error: ' . $e->getMessage());
+        } catch (Throwable $e) {
+            $errorReference = 'ERR-' . Str::uuid();
+
+            Log::error('Transfer error', [
+                'reference' => $errorReference,
+                'message' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+                'user_id' => Auth::id(),
+                'request' => [
+                    'recipient' => $request->input('recipient'),
+                    'amount' => $request->input('amount'),
+                    'has_description' => $request->filled('description'),
+                    'has_client_idempotency_key' => $request->filled('client_idempotency_key'),
+                    'has_idempotency_key' => $request->filled('idempotency_key'),
+                ],
+            ]);
 
             return response()->json([
                 'status' => 'error',
-                'message' => 'Unable to complete transfer'
+                'message' => 'Unable to complete transfer',
+                'reference' => $errorReference,
             ], 500);
         }
     }

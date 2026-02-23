@@ -3,6 +3,8 @@
 namespace App\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Contracts\Validation\Validator;
+use Illuminate\Http\Exceptions\HttpResponseException;
 
 class StoreTransactionRequest extends FormRequest
 {
@@ -20,17 +22,33 @@ class StoreTransactionRequest extends FormRequest
      * @return array<string, \Illuminate\Contracts\Validation\ValidationRule|array<mixed>|string>
      */
     public function rules(): array
-{
-    return [
-        //'wallet_id' => 'required|exists:wallets,id',
-        'amount' => 'required|numeric|min:0.01',
-        'recipient' => 'required|string',
-        'description' => 'nullable|string|max:255',
-        'client_idempotency_key' => 'required|string|max:255',
-        // 'type' removed
-        // 'recipient_description' removed
-        // 'reference' removed
-    ];
-}
+    {
+        if ($this->is('api/transactions/transfer') || $this->is('transactions/transfer')) {
+            return [
+                'recipient' => 'required|string',
+                'amount' => 'required|numeric|gt:0',
+                'description' => 'nullable|string|max:255',
+                'client_idempotency_key' => 'required|string|max:100',
+            ];
+        }
+
+        return [
+            'wallet_id' => 'required|exists:wallets,id',
+            'type' => 'required|in:credit,debit',
+            'amount' => 'required|numeric|gt:0',
+            'reference' => 'required|string|max:255',
+            'idempotency_key' => 'required|string|max:255',
+            'description' => 'nullable|string|max:255',
+        ];
+    }
+
+    protected function failedValidation(Validator $validator): void
+    {
+        throw new HttpResponseException(response()->json([
+            'status' => 'error',
+            'message' => 'Validation failed',
+            'errors' => $validator->errors(),
+        ], 422));
+    }
 
 }

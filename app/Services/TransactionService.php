@@ -18,6 +18,9 @@ class TransactionService
         return [
             'status' => 'success',
             'message' => $message,
+            'reference' => $data['reference'] ?? null,
+            'idempotency_key' => $data['idempotency_key'] ?? null,
+            'sender_transaction' => $data['sender_transaction'] ?? null,
             'transaction' => $data['transaction'] ?? null,
             'recipient_transaction' => $data['recipient_transaction'] ?? null,
             'wallet_balance' => $data['wallet_balance'] ?? null,
@@ -31,6 +34,12 @@ class TransactionService
         return [
             'status' => 'error',
             'message' => $message,
+            'reference' => null,
+            'idempotency_key' => null,
+            'sender_transaction' => null,
+            'recipient_transaction' => null,
+            'wallet_balance' => null,
+            'recipient_wallet_balance' => null,
             'code' => $code,
         ];
     }
@@ -255,40 +264,69 @@ class TransactionService
      */
     public function transfer(array $data): array
     {
-        DB::beginTransaction();
+        $idempotencyKey = $data['client_idempotency_key'] ?? $data['idempotency_key'] ?? null;
+        $reference = null;
+
+        if (!is_string($idempotencyKey) || trim($idempotencyKey) === '') {
+            return $this->errorResponse('client_idempotency_key is required', 422);
+        }
 
         try {
-            //check if tranfer with same client_idempotency_key already exist
-            $existingTransaction = Transaction::where('idempotency_key', '=', $data['client_idempotency_key'], 'and')->first();
-            if ($existingTransaction) {
+            $existingSenderTransaction = Transaction::where('idempotency_key', '=', $idempotencyKey, 'and')
+                ->where('type', 'debit')
+                ->first();
+            $existingRecipientTransaction = Transaction::where('idempotency_key', '=', $idempotencyKey, 'and')
+                ->where('type', 'credit')
+                ->first();
+
+            if ($existingSenderTransaction || $existingRecipientTransaction) {
+                $existingReference = $existingSenderTransaction->reference ?? $existingRecipientTransaction->reference;
+                $senderWalletBalance = $existingSenderTransaction?->wallet?->balance;
+                $recipientWalletBalance = $existingRecipientTransaction?->wallet?->balance;
+
                 return $this->successResponse('Transfer already processed', [
-                    'reference' => $existingTransaction->reference,
-                    'idempotency_key' => $existingTransaction->idempotency_key,
-                    'sender_transaction' => $existingTransaction->type === 'debit' ? $existingTransaction : null,
-                    'recipient_transaction' => $existingTransaction->type === 'credit' ? $existingTransaction : null,
+                    'reference' => $existingReference,
+                    'idempotency_key' => $idempotencyKey,
+                    'sender_transaction' => $existingSenderTransaction,
+                    'recipient_transaction' => $existingRecipientTransaction,
+                    'wallet_balance' => $senderWalletBalance,
+                    'recipient_wallet_balance' => $recipientWalletBalance,
                 ]);
             }
-            $senderWallet = Wallet::where('id', Auth::user()->wallet->id)->lockForUpdate()->first();;
+
+            $user = Auth::user();
+            $senderWalletId = $user?->wallet?->id;
+            if (!$senderWalletId) {
+                return $this->errorResponse('Sender wallet not found', 404);
+            }
+
+            DB::beginTransaction();
+
+            $senderWallet = Wallet::where('id', $senderWalletId)->lockForUpdate()->first();
             if (!$senderWallet) {
+                DB::rollBack();
                 return $this->errorResponse('Sender wallet not found', 404);
             }
 
             $recipientWallet = $this->resolveRecipientWallet($data['recipient']);
             if (!$recipientWallet) {
+                DB::rollBack();
                 return $this->errorResponse('Recipient wallet not found', 404);
             }
 
             if ($senderWallet->id === $recipientWallet->id) {
+                DB::rollBack();
                 return $this->errorResponse('You cannot transfer to your own wallet', 400);
             }
 
             $amount = (string)($data['amount']);
             if ($senderWallet->balance < $amount) {
+                DB::rollBack();
                 return $this->errorResponse('Insufficient balance', 400);
             }
 
             // Generate keys safely
-            $reference = 'TRX-' . Str::uuid()->toString();
+            $reference = 'TRX-' . Str::uuid();
 
             $description = $data['description'] ?? "Transfer to {$recipientWallet->address}";
 
@@ -302,8 +340,8 @@ class TransactionService
                 'amount' => $amount,
                 'recipient_address' => $recipientWallet->address,
                 'reference' => $reference,
-                'idempotency_key' => $data['client_idempotency_key'],
-                'description' => $data['description'] ?? "Transfer to {$recipientWallet->address}",
+                'idempotency_key' => $idempotencyKey,
+                'description' => $description,
                 'status' => 'successful',
 
                 'metadata' => [
@@ -322,7 +360,7 @@ class TransactionService
                 'amount' => $amount,
                 'sender_address' => $senderWallet->address,
                 'reference' => $reference,
-                'idempotency_key' => $data['client_idempotency_key'],
+                'idempotency_key' => $idempotencyKey,
                 'description' => $data['description'] ?? "Received from {$senderWallet->address}",
                 'status' => 'successful',
 
@@ -336,16 +374,41 @@ class TransactionService
 
             return $this->successResponse('Transfer successful', [
                 'reference' => $reference,
-                'idempotency_key' => $data['client_idempotency_key'],
+                'idempotency_key' => $idempotencyKey,
                 'sender_transaction' => $senderTransaction,
                 'recipient_transaction' => $recipientTransaction,
                 'wallet_balance' => $senderWallet->balance,
                 'recipient_wallet_balance' => $recipientWallet->balance,
             ]);
-        } catch (Exception $e) {
-            DB::rollBack();
-            Log::error('Transfer failed: ' . $e->getMessage());
-            return $this->errorResponse('Unable to complete transfer', 500);
+        } catch (\Throwable $e) {
+            if (DB::transactionLevel() > 0) {
+                DB::rollBack();
+            }
+            $code = (int) $e->getCode();
+            $statusCode = ($code >= 400 && $code < 500) ? $code : 500;
+            $user = Auth::user();
+            $logPayload = [
+                'recipient' => $data['recipient'] ?? null,
+                'amount' => $data['amount'] ?? null,
+                'has_description' => array_key_exists('description', $data),
+                'client_idempotency_key' => isset($data['client_idempotency_key']) ? Str::limit((string) $data['client_idempotency_key'], 20, '...') : null,
+                'idempotency_key' => isset($data['idempotency_key']) ? Str::limit((string) $data['idempotency_key'], 20, '...') : null,
+            ];
+
+            Log::error('Transfer failed', [
+                'message' => $e->getMessage(),
+                'code' => $code,
+                'trace' => $e->getTraceAsString(),
+                'user_id' => $user?->id,
+                'request' => $logPayload,
+                'reference' => $reference ?? null,
+                'idempotency_key' => $idempotencyKey ?? null,
+            ]);
+
+            return $this->errorResponse(
+                $statusCode === 500 ? 'Unable to complete transfer' : $e->getMessage(),
+                $statusCode
+            );
         }
     }
 }
