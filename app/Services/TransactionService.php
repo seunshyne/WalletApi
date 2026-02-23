@@ -78,28 +78,30 @@ class TransactionService
 
         // 2️⃣ Lock wallet row to avoid race conditions
         $wallet = Wallet::where('id', $data['wallet_id'])->lockForUpdate()->firstOrFail();
+        $amount = round((float) $data['amount'], 2);
 
         // 3️⃣ Overdraft protection
-        if ($data['type'] === 'debit' && $wallet->balance < $data['amount']) {
+        if ($data['type'] === 'debit' && (float) $wallet->balance < $amount) {
             throw new Exception('Insufficient balance', 422);
         }
 
         // 4️⃣ Atomic transaction
-        $transaction = DB::transaction(function () use ($data, $wallet) {
-            $wallet->balance += $data['type'] === 'credit'
-                ? $data['amount']
-                : -$data['amount'];
-
-            $wallet->save();
+        $transaction = DB::transaction(function () use ($data, $wallet, $amount) {
+            if ($data['type'] === 'credit') {
+                $wallet->increment('balance', $amount);
+            } else {
+                $wallet->decrement('balance', $amount);
+            }
 
             return Transaction::create([
                 'wallet_id' => $wallet->id,
                 'type' => $data['type'],
-                'amount' => $data['amount'],
+                'amount' => $amount,
                 'reference' => $data['reference'],
                 'idempotency_key' => $data['idempotency_key'],
             ]);
         });
+        $wallet->refresh();
 
         return [
             'status' => 'success',
@@ -319,8 +321,8 @@ class TransactionService
                 return $this->errorResponse('You cannot transfer to your own wallet', 400);
             }
 
-            $amount = (string)($data['amount']);
-            if ($senderWallet->balance < $amount) {
+            $amount = round((float) $data['amount'], 2);
+            if ((float) $senderWallet->balance < $amount) {
                 DB::rollBack();
                 return $this->errorResponse('Insufficient balance', 400);
             }
@@ -331,8 +333,7 @@ class TransactionService
             $description = $data['description'] ?? "Transfer to {$recipientWallet->address}";
 
             // Debit sender
-            $senderWallet->balance -= $amount;
-            $senderWallet->save();
+            $senderWallet->decrement('balance', $amount);
 
             $senderTransaction = Transaction::create([
                 'wallet_id' => $senderWallet->id,
@@ -351,8 +352,7 @@ class TransactionService
             ]);
 
             // Credit recipient
-            $recipientWallet->balance += (string)$amount;
-            $recipientWallet->save();
+            $recipientWallet->increment('balance', $amount);
 
             $recipientTransaction = Transaction::create([
                 'wallet_id' => $recipientWallet->id,
@@ -371,6 +371,8 @@ class TransactionService
             ]);
 
             DB::commit();
+            $senderWallet->refresh();
+            $recipientWallet->refresh();
 
             return $this->successResponse('Transfer successful', [
                 'reference' => $reference,
@@ -412,3 +414,6 @@ class TransactionService
         }
     }
 }
+
+
+
