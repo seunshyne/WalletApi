@@ -13,6 +13,8 @@ use Exception;
 
 class TransactionService
 {
+    private const MONEY_SCALE = 2;
+
     protected function successResponse(string $message, $data = [], int $code = 200): array
     {
         return [
@@ -42,6 +44,25 @@ class TransactionService
             'recipient_wallet_balance' => null,
             'code' => $code,
         ];
+    }
+
+    private function ensureBcMathAvailable(): void
+    {
+        if (!function_exists('bcadd') || !function_exists('bcsub') || !function_exists('bccomp')) {
+            throw new Exception('BCMath extension is required', 500);
+        }
+    }
+
+    private function normalizeMoney($amount): string
+    {
+        $this->ensureBcMathAvailable();
+
+        $value = trim((string) $amount);
+        if (!preg_match('/^\d+(?:\.\d{1,2})?$/', $value)) {
+            throw new Exception('Invalid amount format', 422);
+        }
+
+        return bcadd($value, '0', self::MONEY_SCALE);
     }
 
     /**
@@ -78,20 +99,22 @@ class TransactionService
 
         // 2️⃣ Lock wallet row to avoid race conditions
         $wallet = Wallet::where('id', $data['wallet_id'])->lockForUpdate()->firstOrFail();
-        $amount = round((float) $data['amount'], 2);
+        $amount = $this->normalizeMoney($data['amount']);
 
         // 3️⃣ Overdraft protection
-        if ($data['type'] === 'debit' && (float) $wallet->balance < $amount) {
+        if ($data['type'] === 'debit' && bccomp((string) $wallet->balance, $amount, self::MONEY_SCALE) < 0) {
             throw new Exception('Insufficient balance', 422);
         }
 
         // 4️⃣ Atomic transaction
         $transaction = DB::transaction(function () use ($data, $wallet, $amount) {
             if ($data['type'] === 'credit') {
-                $wallet->increment('balance', $amount);
+                $newBalance = bcadd((string) $wallet->balance, $amount, self::MONEY_SCALE);
             } else {
-                $wallet->decrement('balance', $amount);
+                $newBalance = bcsub((string) $wallet->balance, $amount, self::MONEY_SCALE);
             }
+
+            $wallet->update(['balance' => $newBalance]);
 
             return Transaction::create([
                 'wallet_id' => $wallet->id,
@@ -321,8 +344,8 @@ class TransactionService
                 return $this->errorResponse('You cannot transfer to your own wallet', 400);
             }
 
-            $amount = round((float) $data['amount'], 2);
-            if ((float) $senderWallet->balance < $amount) {
+            $amount = $this->normalizeMoney($data['amount']);
+            if (bccomp((string) $senderWallet->balance, $amount, self::MONEY_SCALE) < 0) {
                 DB::rollBack();
                 return $this->errorResponse('Insufficient balance', 400);
             }
@@ -333,7 +356,8 @@ class TransactionService
             $description = $data['description'] ?? "Transfer to {$recipientWallet->address}";
 
             // Debit sender
-            $senderWallet->decrement('balance', $amount);
+            $newSenderBalance = bcsub((string) $senderWallet->balance, $amount, self::MONEY_SCALE);
+            $senderWallet->update(['balance' => $newSenderBalance]);
 
             $senderTransaction = Transaction::create([
                 'wallet_id' => $senderWallet->id,
@@ -352,7 +376,8 @@ class TransactionService
             ]);
 
             // Credit recipient
-            $recipientWallet->increment('balance', $amount);
+            $newRecipientBalance = bcadd((string) $recipientWallet->balance, $amount, self::MONEY_SCALE);
+            $recipientWallet->update(['balance' => $newRecipientBalance]);
 
             $recipientTransaction = Transaction::create([
                 'wallet_id' => $recipientWallet->id,
