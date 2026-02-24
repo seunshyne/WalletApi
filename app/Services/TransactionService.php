@@ -297,32 +297,38 @@ class TransactionService
         }
 
         try {
-            $existingSenderTransaction = Transaction::where('idempotency_key', '=', $idempotencyKey, 'and')
-                ->where('type', 'debit')
-                ->first();
-            $existingRecipientTransaction = Transaction::where('idempotency_key', '=', $idempotencyKey, 'and')
-                ->where('type', 'credit')
-                ->first();
+            $user = Auth::user();
+            $senderWalletId = $user?->wallet?->id;
+            if (!$senderWalletId) {
+                return $this->errorResponse('Sender wallet not found', 404);
+            }
 
-            if ($existingSenderTransaction || $existingRecipientTransaction) {
-                $existingReference = $existingSenderTransaction->reference ?? $existingRecipientTransaction->reference;
-                $senderWalletBalance = $existingSenderTransaction?->wallet?->balance;
+            $existingSenderTransaction = Transaction::where('idempotency_key', $idempotencyKey)
+                ->where('type', 'debit')
+                ->where('wallet_id', $senderWalletId)
+                ->first();
+            if ($existingSenderTransaction) {
+                $existingRecipientTransaction = Transaction::where('reference', $existingSenderTransaction->reference)
+                    ->where('type', 'credit')
+                    ->first();
+                $senderWalletBalance = $existingSenderTransaction->wallet?->balance;
                 $recipientWalletBalance = $existingRecipientTransaction?->wallet?->balance;
 
+                Log::info('Transfer idempotency replay', [
+                    'user_id' => $user?->id,
+                    'sender_wallet_id' => $senderWalletId,
+                    'reference' => $existingSenderTransaction->reference,
+                    'idempotency_key' => $idempotencyKey,
+                ]);
+
                 return $this->successResponse('Transfer already processed', [
-                    'reference' => $existingReference,
+                    'reference' => $existingSenderTransaction->reference,
                     'idempotency_key' => $idempotencyKey,
                     'sender_transaction' => $existingSenderTransaction,
                     'recipient_transaction' => $existingRecipientTransaction,
                     'wallet_balance' => $senderWalletBalance,
                     'recipient_wallet_balance' => $recipientWalletBalance,
                 ]);
-            }
-
-            $user = Auth::user();
-            $senderWalletId = $user?->wallet?->id;
-            if (!$senderWalletId) {
-                return $this->errorResponse('Sender wallet not found', 404);
             }
 
             DB::beginTransaction();
@@ -345,16 +351,25 @@ class TransactionService
             }
 
             $amount = $this->normalizeMoney($data['amount']);
-
-            // DEBUG: check runtime values
-            dd([
-                'balance' => $senderWallet->balance,
+            $compareResult = bccomp((string) $senderWallet->balance, $amount, self::MONEY_SCALE);
+            Log::info('Transfer balance check', [
+                'user_id' => $user?->id,
+                'sender_wallet_id' => $senderWallet->id,
+                'recipient_wallet_id' => $recipientWallet->id,
+                'balance' => (string) $senderWallet->balance,
                 'amount' => $amount,
-                'bccomp_result' => bccomp((string) $senderWallet->balance, $amount, self::MONEY_SCALE),
+                'bccomp_result' => $compareResult,
+                'idempotency_key' => $idempotencyKey,
             ]);
-            
-            if (bccomp((string) $senderWallet->balance, $amount, self::MONEY_SCALE) < 0) {
+            if ($compareResult < 0) {
                 DB::rollBack();
+                Log::warning('Transfer rejected: insufficient balance', [
+                    'user_id' => $user?->id,
+                    'sender_wallet_id' => $senderWallet->id,
+                    'balance' => (string) $senderWallet->balance,
+                    'amount' => $amount,
+                    'idempotency_key' => $idempotencyKey,
+                ]);
                 return $this->errorResponse('Insufficient balance', 400);
             }
 
@@ -406,6 +421,16 @@ class TransactionService
             DB::commit();
             $senderWallet->refresh();
             $recipientWallet->refresh();
+            Log::info('Transfer committed', [
+                'user_id' => $user?->id,
+                'sender_wallet_id' => $senderWallet->id,
+                'recipient_wallet_id' => $recipientWallet->id,
+                'reference' => $reference,
+                'amount' => $amount,
+                'sender_balance_after' => (string) $senderWallet->balance,
+                'recipient_balance_after' => (string) $recipientWallet->balance,
+                'idempotency_key' => $idempotencyKey,
+            ]);
 
             return $this->successResponse('Transfer successful', [
                 'reference' => $reference,
