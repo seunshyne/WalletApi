@@ -176,7 +176,7 @@ class TransactionService
                 'id'         => $transaction->id,
                 'amount'     => $transaction->amount,
                 'type'       => $transaction->type,
-                'description'=> $transaction->description,
+                'description' => $transaction->description,
                 'reference'  => $transaction->reference,
                 'created_at' => $transaction->created_at->toDateTimeString(),
             ];
@@ -345,6 +345,14 @@ class TransactionService
             }
 
             $amount = $this->normalizeMoney($data['amount']);
+
+            // DEBUG: check runtime values
+            dd([
+                'balance' => $senderWallet->balance,
+                'amount' => $amount,
+                'bccomp_result' => bccomp((string) $senderWallet->balance, $amount, self::MONEY_SCALE),
+            ]);
+            
             if (bccomp((string) $senderWallet->balance, $amount, self::MONEY_SCALE) < 0) {
                 DB::rollBack();
                 return $this->errorResponse('Insufficient balance', 400);
@@ -439,6 +447,3 @@ class TransactionService
         }
     }
 }
-
-
-
