@@ -27,7 +27,7 @@ Route::prefix('auth')->group(function () {
         ->middleware('throttle:6,1');
 
     Route::post('/login', [AuthController::class, 'login'])
-        ->middleware('throttle:login');
+        ->middleware('throttle:6,1');
 });
 
 // --------------------
@@ -50,7 +50,6 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::prefix('transactions')->group(function () {
         Route::get('/', [TransactionController::class, 'index']);
         Route::post('/', [TransactionController::class, 'store']);
-        Route::post('/transfer', [TransactionController::class, 'transfer'])
-            ->middleware('throttle:transfers');
+        Route::post('/transfer', [TransactionController::class, 'transfer']);
     });
 });
