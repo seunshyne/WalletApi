@@ -10,6 +10,7 @@ use Illuminate\Auth\Events\Verified;
 use App\Jobs\SendVerificationEmail;
 use App\Models\User;
 use Exception;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
 
@@ -127,7 +128,7 @@ class AuthController extends Controller
 
         return redirect(config('app.frontend_url') . '/login?verified=success');
 
-    } catch (\Exception $e) {
+    } catch (Exception $e) {
         Log::error('Email verification failed', [
             'error' => $e->getMessage(),
             'trace' => $e->getTraceAsString(),
@@ -190,7 +191,7 @@ class AuthController extends Controller
                         'email' => ['The provided credentials are incorrect.']
                     ]
                 ], 401);
-            } 
+            }
 
             //Block login if email not verified
             if (!$user->hasVerifiedEmail()) {
@@ -204,8 +205,8 @@ class AuthController extends Controller
 
             // Get user's wallet
             $wallet = $user->wallet;
-
-            $token = $user->createToken('auth_token')->plainTextToken;
+            Auth::guard('web')->login($user);
+            $request->session()->regenerate();
 
             return response()->json([
                 'user' => [
@@ -215,7 +216,6 @@ class AuthController extends Controller
                     'email_verified_at' => $user->email_verified_at,
                 ],
                 'wallet' => $wallet,
-                'token' => $token,
             ], 200);
         } catch (Exception $e) {
             Log::error('Login error', ['error' => $e->getMessage()]);
@@ -232,10 +232,9 @@ class AuthController extends Controller
     public function logout(Request $request)
     {
         try {
-
-            if ($request->user() && $request->user()->currentAccessToken()) {
-                $request->user()->currentAccessToken()->delete();
-            }
+            Auth::guard('web')->logout();
+            $request->session()->invalidate();
+            $request->session()->regenerateToken();
 
             return response()->json([
                 'message' => 'Logged out successfully'

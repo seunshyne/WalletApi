@@ -19,10 +19,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'csrf.specific' => App\Http\Middleware\VerifySpecificCsrfToken::class,
         ]);
 
-        $middleware->api(prepend: [
-            \Laravel\Sanctum\Http\Middleware\EnsureFrontendRequestsAreStateful::class,
-        ]);
-        // Ensure stateful API requests also start the session
+        // Enable Sanctum SPA cookie-based session authentication for API routes.
         $middleware->statefulApi();
 
         $middleware->append(

@@ -19,12 +19,10 @@ return [
 
     'allowed_methods' => ['*'],
 
-    'allowed_origins' => [
-        'https://app-primewallet.duckdns.org',
-        'http://localhost:9000',
-        'http://localhost:9001',
-        'http://localhost:3000',  
-        ],
+    'allowed_origins' => array_values(array_filter(array_map(
+        static fn (string $origin): string => trim($origin),
+        explode(',', env('CORS_ALLOWED_ORIGINS', 'http://localhost:3000,http://localhost:9000,http://localhost:9001'))
+    ))),
 
     'allowed_origins_patterns' => [],
 
@@ -34,6 +32,6 @@ return [
 
     'max_age' => 0,
 
-    'supports_credentials' => true,
+    'supports_credentials' => (bool) env('CORS_SUPPORTS_CREDENTIALS', true),
 
 ];
