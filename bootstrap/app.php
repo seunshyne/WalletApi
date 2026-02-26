@@ -19,6 +19,14 @@ return Application::configure(basePath: dirname(__DIR__))
             'csrf.specific' => App\Http\Middleware\VerifySpecificCsrfToken::class,
         ]);
 
+         $middleware->trustProxies(at: '*'); 
+         
+         // Allows Laravel to handle SPA cookie auth on API routes
+        $middleware->statefulApi();
+
+        // Ensure cookies are encrypted
+        $middleware->encryptCookies();
+
         $middleware->append(
             \Illuminate\Http\Middleware\HandleCors::class
         );

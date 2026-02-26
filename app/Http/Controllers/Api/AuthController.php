@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Auth\Events\Verified;
 use App\Jobs\SendVerificationEmail;
@@ -94,48 +95,47 @@ class AuthController extends Controller
     }
 
     //verify email via signed link
-       public function verifyEmail(Request $request, $id, $hash)
-{
-    try {
-        $user = User::findOrFail($id);
+    public function verifyEmail(Request $request, $id, $hash)
+    {
+        try {
+            $user = User::findOrFail($id);
 
-        // Check hash matches first (before signature check)
-        if (!hash_equals(sha1($user->getEmailForVerification()), (string) $hash)) {
-            return redirect(config('app.frontend_url') . '/login?verified=invalid');
-        }
+            // Check hash matches first (before signature check)
+            if (!hash_equals(sha1($user->getEmailForVerification()), (string) $hash)) {
+                return redirect(config('app.frontend_url') . '/login?verified=invalid');
+            }
 
-        // Already verified - redirect to success
-        if ($user->hasVerifiedEmail()) {
-            return redirect(config('app.frontend_url') . '/login?verified=already');
-        }
+            // Already verified - redirect to success
+            if ($user->hasVerifiedEmail()) {
+                return redirect(config('app.frontend_url') . '/login?verified=already');
+            }
 
-        // Manually validate signature (more reliable)
-        if (!$request->hasValidSignature()) {
-            // Log what's happening
-            Log::warning('Invalid signature', [
-                'url' => $request->fullUrl(),
-                'user_id' => $id,
+            // Manually validate signature (more reliable)
+            if (!$request->hasValidSignature()) {
+                // Log what's happening
+                Log::warning('Invalid signature', [
+                    'url' => $request->fullUrl(),
+                    'user_id' => $id,
+                ]);
+                return redirect(config('app.frontend_url') . '/login?verified=invalid');
+            }
+
+            // Mark as verified and fire event
+            $user->markEmailAsVerified();
+            event(new Verified($user));
+
+            Log::info('Email verified successfully', ['user_id' => $user->id]);
+
+            return redirect(config('app.frontend_url') . '/login?verified=success');
+        } catch (Exception $e) {
+            Log::error('Email verification failed', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
             ]);
-            return redirect(config('app.frontend_url') . '/login?verified=invalid');
+
+            return redirect(config('app.frontend_url') . '/login?verified=error');
         }
-
-        // Mark as verified and fire event
-        $user->markEmailAsVerified();
-        event(new Verified($user));
-
-        Log::info('Email verified successfully', ['user_id' => $user->id]);
-
-        return redirect(config('app.frontend_url') . '/login?verified=success');
-
-    } catch (Exception $e) {
-        Log::error('Email verification failed', [
-            'error' => $e->getMessage(),
-            'trace' => $e->getTraceAsString(),
-        ]);
-
-        return redirect(config('app.frontend_url') . '/login?verified=error');
     }
-}
 
 
     public function resendVerificationEmail(Request $request)
@@ -202,10 +202,11 @@ class AuthController extends Controller
             }
 
 
-            // Get user's wallet
-            $wallet = $user->wallet;
+            // Log in via session (HttpOnly cookie)
+            Auth::login($user);
+            $request->session()->regenerate(); // Prevent session fixation attacks
 
-            $token = $user->createToken('auth_token')->plainTextToken;
+            $wallet = $user->wallet;
 
             return response()->json([
                 'user' => [
@@ -215,7 +216,6 @@ class AuthController extends Controller
                     'email_verified_at' => $user->email_verified_at,
                 ],
                 'wallet' => $wallet,
-                'token' => $token,
             ], 200);
         } catch (Exception $e) {
             Log::error('Login error', ['error' => $e->getMessage()]);
@@ -233,14 +233,13 @@ class AuthController extends Controller
     {
         try {
 
-            if ($request->user() && $request->user()->currentAccessToken()) {
-                $request->user()->currentAccessToken()->delete();
-            }
+            Auth::logout();
+            $request->session()->invalidate();
+            $request->session()->regenerateToken();
 
             return response()->json([
                 'message' => 'Logged out successfully'
             ]);
-
         } catch (Exception $e) {
 
             Log::error('Logout failed', [
@@ -252,5 +251,4 @@ class AuthController extends Controller
             ], 500);
         }
     }
-
 }
