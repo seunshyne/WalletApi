@@ -24,6 +24,11 @@ return Application::configure(basePath: dirname(__DIR__))
          // Allows Laravel to handle SPA cookie auth on API routes
         $middleware->statefulApi();
 
+        // Add StartSession to API middleware so session is available for Sanctum
+        $middleware->appendToGroup('api', [
+            \Illuminate\Session\Middleware\StartSession::class,
+        ]);
+
         // Ensure cookies are encrypted
         $middleware->encryptCookies();
 
