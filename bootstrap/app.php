@@ -19,14 +19,21 @@ return Application::configure(basePath: dirname(__DIR__))
             'csrf.specific' => App\Http\Middleware\VerifySpecificCsrfToken::class,
         ]);
 
-         $middleware->trustProxies(at: '*'); 
-         
-         // Allows Laravel to handle SPA cookie auth on API routes
+        $middleware->trustProxies(at: '*');
+
+        // Allows Laravel to handle SPA cookie auth on API routes
         $middleware->statefulApi();
 
         // Add StartSession to API middleware so session is available for Sanctum
         $middleware->appendToGroup('api', [
             \Illuminate\Session\Middleware\StartSession::class,
+        ]);
+
+        $middleware->validateCsrfTokens(except: [
+            'api/auth/login',
+            'api/auth/register',
+            'api/auth/logout',
+            'api/email/resend',
         ]);
 
         // Ensure cookies are encrypted
