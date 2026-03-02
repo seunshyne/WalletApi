@@ -237,6 +237,7 @@ class AuthController extends Controller
             $request->session()->regenerateToken();
 
             return response()->json(['message' => 'Logged out successfully']);
+
         } catch (Exception $e) {
             Log::error('Logout failed', ['error' => $e->getMessage()]);
             return response()->json(['message' => 'Logout failed'], 500);

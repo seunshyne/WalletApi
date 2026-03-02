@@ -6,39 +6,48 @@ use App\Http\Controllers\Api\WalletController;
 use App\Http\Controllers\Api\TransactionController;
 use App\Http\Controllers\Api\AuthController;
 
-// Email verification (signed URL, no session needed)
+// Email verification routes
 Route::get('/email/verify/{id}/{hash}', [AuthController::class, 'verifyEmail'])
     ->middleware('signed')
     ->name('verification.verify');
 
-// Resend verification (no session needed)
+// Resend verification email
 Route::post('/email/resend', [AuthController::class, 'resendVerificationEmail'])
     ->middleware('throttle:6,1');
 
-// All routes that need session (login, logout, protected routes)
-Route::middleware(['web'])->group(function () {
+// Transaction recipient resolution (requires authentication)
+Route::post('/resolve-recipient', [TransactionController::class, 'resolve'])
+    ->middleware('auth:sanctum');
 
-    // Auth routes (no authentication required)
-    Route::prefix('auth')->middleware('throttle:6,1')->group(function () {
+// --------------------
+// Auth routes (no authentication required)
+// --------------------
+Route::prefix('auth')
+    ->middleware(['web', 'throttle:6,1'])
+    ->group(function () {
         Route::post('/register', [AuthController::class, 'register']);
         Route::post('/login', [AuthController::class, 'login']);
-        Route::post('/logout', [AuthController::class, 'logout']);
     });
 
-    // Protected routes (requires authentication)
-    Route::middleware('auth:sanctum')->group(function () {
-        Route::post('/resolve-recipient', [TransactionController::class, 'resolve']);
+Route::post('/auth/logout', [AuthController::class, 'logout'])
+    ->middleware(['web', 'auth:web']);
+// --------------------
+// Protected routes (requires Sanctum authentication)
+// --------------------
+Route::middleware('auth:sanctum')->group(function () {
 
-        Route::get('/user', function (Request $request) {
-            return response()->json(['user' => $request->user()]);
-        });
+    // Get authenticated user
+    Route::get('/user', function (Request $request) {
+        return response()->json(['user' => $request->user()]);
+    });
 
-        Route::get('/wallets', [WalletController::class, 'show']);
+    // Wallets
+    Route::get('/wallets', [WalletController::class, 'show']);
 
-        Route::prefix('transactions')->group(function () {
-            Route::get('/', [TransactionController::class, 'index']);
-            Route::post('/', [TransactionController::class, 'store']);
-            Route::post('/transfer', [TransactionController::class, 'transfer']);
-        });
+    // Transactions
+    Route::prefix('transactions')->group(function () {
+        Route::get('/', [TransactionController::class, 'index']);
+        Route::post('/', [TransactionController::class, 'store']);
+        Route::post('/transfer', [TransactionController::class, 'transfer']);
     });
 });
