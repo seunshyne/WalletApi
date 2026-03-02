@@ -20,7 +20,7 @@ return [
     'allowed_methods' => ['*'],
 
     'allowed_origins' => [
-        'https://app-primewallet.duckdns.org',
+        'https://primewallet.duckdns.org',
         'http://localhost:9000',
         'http://localhost:9001',
         'http://localhost:3000',  
