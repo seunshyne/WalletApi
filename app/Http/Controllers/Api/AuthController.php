@@ -232,23 +232,19 @@ class AuthController extends Controller
     public function logout(Request $request)
     {
         try {
+            // If using cookie/session auth (Sanctum SPA), log out web guard
+            Auth::guard('web')->logout();
 
-            Auth::logout();
+            // If request used API token, revoke it too (safe no-op when null)
+            $request->user()?->currentAccessToken()?->delete();
+
             $request->session()->invalidate();
             $request->session()->regenerateToken();
 
-            return response()->json([
-                'message' => 'Logged out successfully'
-            ]);
-        } catch (Exception $e) {
-
-            Log::error('Logout failed', [
-                'error' => $e->getMessage()
-            ]);
-
-            return response()->json([
-                'message' => 'Logout failed'
-            ], 500);
+            return response()->json(['message' => 'Logged out successfully']);
+        } catch (\Throwable $e) {
+            Log::error('Logout failed', ['error' => $e->getMessage()]);
+            return response()->json(['message' => 'Logout failed'], 500);
         }
     }
 }
