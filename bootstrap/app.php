@@ -23,17 +23,6 @@ return Application::configure(basePath: dirname(__DIR__))
 
         // Allows Laravel to handle SPA cookie auth on API routes
         $middleware->statefulApi();
-
-        $middleware->validateCsrfTokens(except: [
-            'api/auth/login',
-            'api/auth/register',
-            'api/auth/logout',
-            'api/email/resend',
-        ]);
-
-        $middleware->append(
-            \Illuminate\Http\Middleware\HandleCors::class
-        );
     })
 
     ->withExceptions(function (Exceptions $exceptions): void {
