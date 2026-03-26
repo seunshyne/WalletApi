@@ -11,12 +11,26 @@ return Application::configure(basePath: dirname(__DIR__))
         api: __DIR__ . '/../routes/api.php',
         commands: __DIR__ . '/../routes/console.php',
         health: '/up',
+        then: function () {                          // ✅ correct way
+            Route::middleware('api')
+                ->prefix('api/admin')
+                ->name('admin.')
+                ->group(base_path('routes/admin.php'));
+        },
     )
 
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->alias([
             'idempotent' => App\Http\Middleware\IdempotencyMiddleware::class,
             'csrf.specific' => App\Http\Middleware\VerifySpecificCsrfToken::class,
+            'admin' => App\Http\Middleware\EnsureUserIsAdmin::class,
+        ]);
+
+        $middleware->validateCsrfTokens(except: [
+            'api/auth/register',
+            'api/auth/login',
+            'api/admin/*',
+            'api/webhook/paystack',
         ]);
 
         $middleware->trustProxies(at: '*');

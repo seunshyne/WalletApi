@@ -11,6 +11,7 @@ return new class extends Migration
      */
     public function up(): void
     {
+    if (!Schema::hasTable('sessions')) {  // ← guard clause
         Schema::create('sessions', function (Blueprint $table) {
             $table->string('id')->primary();
             $table->foreignId('user_id')->nullable()->index();
@@ -20,6 +21,7 @@ return new class extends Migration
             $table->integer('last_activity')->index();
         });
     }
+}
 
     public function down(): void
     {

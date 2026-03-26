@@ -38,26 +38,28 @@ class SendVerificationEmail implements ShouldQueue
     {
         $user = User::findOrFail($this->userId);
 
-        // Force HTTPS and correct domain for signed URL
-        URL::forceRootUrl(config('app.url'));
-        URL::forceScheme('https');
+        // Force HTTPS for only Production and correct domain for signed URL
+        if (app()->environment('production')) {
+            URL::forceRootUrl(config('app.url'));
+            URL::forceScheme('https');
+        }
 
         // Generate signed URL for email verification
         $verificationUrl = URL::temporarySignedRoute(
-        'verification.verify',
-        Carbon::now()->addMinutes(60),
-        [
-            'id' => $user->id,
-            'hash' => sha1($user->email),
-        ]
-    );
+            'verification.verify',
+            Carbon::now()->addMinutes(60),
+            [
+                'id' => $user->id,
+                'hash' => sha1($user->email),
+            ]
+        );
 
-    Log::info('Verification URL generated', [
-        'url' => $verificationUrl,
-        'user_id' => $user->id
-    ]);
+        Log::info('Verification URL generated', [
+            'url' => $verificationUrl,
+            'user_id' => $user->id
+        ]);
 
-    Mail::to($user->email)
-        ->send(new VerifyEmailMail($verificationUrl));
+        Mail::to($user->email)
+            ->send(new VerifyEmailMail($verificationUrl));
     }
 }

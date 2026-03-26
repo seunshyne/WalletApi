@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
 
@@ -22,6 +23,8 @@ class User extends Authenticatable implements MustVerifyEmail
         'name',
         'email',
         'password',
+        'role',
+        'status',
     ];
 
     /**
@@ -41,13 +44,41 @@ class User extends Authenticatable implements MustVerifyEmail
      */
     protected function casts(): array
     {
+
         return [
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
+            'role'   => 'string',
+            'status' => 'string',
         ];
     }
 
-    public function wallet() {
+    // Convenience helpers
+    public function isAdmin(): bool
+    {
+        return $this->role === 'admin';
+    }
+
+    public function isSuspended(): bool
+    {
+        return $this->status === 'suspended';
+    }
+
+    public function wallet()
+    {
         return $this->hasOne(Wallet::class);
+    }
+
+    public function walletFundings()
+    {
+        return $this->hasMany(WalletFunding::class);
+    }
+
+    protected static function booted(): void
+    {
+        static::created(function () {
+            Cache::forget('admin.analytics.summary');
+            Cache::forget('admin.analytics.users');
+        });
     }
 }
