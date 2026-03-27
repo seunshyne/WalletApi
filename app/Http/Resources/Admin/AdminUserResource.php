@@ -24,6 +24,7 @@ class AdminUserResource extends JsonResource
             'wallet'      => $this->whenLoaded('wallet', fn() => [
                 'balance'      => $this->wallet->balance,
                 'currency'     => $this->wallet->currency,
+                'address'      => $this->wallet->address,
                 'transactions' => $this->wallet->transactions->map(fn($tx) => [
                     'id'          => $tx->id,
                     'type'        => $tx->type,

@@ -48,4 +48,15 @@ class AdminTransactionController extends Controller
         $transaction->update(['flagged' => true]);
         return response()->json(['message' => 'Transaction flagged for review']);
     }
+
+    public function unflag(Transaction $transaction)
+    {
+        if (! $transaction->flagged) {
+            return response()->json(['message' => 'Transaction is not flagged'], 422);
+        }
+
+        $transaction->update(['flagged' => false]);
+
+        return response()->json(['message' => 'Transaction unflagged']);
+    }
 }

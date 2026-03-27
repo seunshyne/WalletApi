@@ -12,6 +12,7 @@ Route::post('/login', [AdminAuthController::class, 'login']);
 //Protected admin routes
 Route::middleware(['auth:sanctum', 'admin'])->group(function () {
 
+    Route::get('/me', [AdminAuthController::class, 'me']);
     Route::post('/logout', [AdminAuthController::class, 'logout']);
 
     // Users
@@ -24,6 +25,7 @@ Route::middleware(['auth:sanctum', 'admin'])->group(function () {
     Route::get('/transactions',             [AdminTransactionController::class, 'index']);
     Route::get('/transactions/{transaction}',[AdminTransactionController::class, 'show']);
     Route::patch('/transactions/{transaction}/flag', [AdminTransactionController::class, 'flag']);
+    Route::patch('/transactions/{transaction}/unflag', [AdminTransactionController::class, 'unflag']);
 
     // Analytics
     Route::get('/analytics/summary',        [AdminAnalyticsController::class, 'summary']);
