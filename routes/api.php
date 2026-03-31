@@ -6,7 +6,8 @@ use App\Http\Controllers\Api\WalletController;
 use App\Http\Controllers\Api\TransactionController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\WalletFundingController;
-use App\Http\Controllers\API\PaystackWebhookController;
+use App\Http\Controllers\Api\PaystackWebhookController;
+use App\Http\Controllers\Api\PasswordResetController;
 
 // Email verification routes
 Route::get('/email/verify/{id}/{hash}', [AuthController::class, 'verifyEmail'])
@@ -34,6 +35,10 @@ Route::prefix('auth')
 Route::post('/auth/logout', [AuthController::class, 'logout'])
     ->middleware(['web', 'auth:web']);
 
+// Password reset routes 
+Route::post('/forgot-password', [PasswordResetController::class, 'sendResetLink']);
+Route::post('/reset-password', [PasswordResetController::class, 'resetPassword']);
+
 // Paystack webhook 
 Route::post('/webhook/paystack', [PaystackWebhookController::class, 'handle']);
 
@@ -43,6 +48,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/user', function (Request $request) {
         return response()->json(['user' => $request->user()]);
     });
+    Route::post('/auth/change-password', [AuthController::class, 'changePassword']);
     // Wallets
     Route::get('/wallets', [WalletController::class, 'show']);
     // Transactions
@@ -55,4 +61,3 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/wallet/fund/initiate', [WalletFundingController::class, 'initiate']);
         Route::post('/wallet/fund/verify', [WalletFundingController::class, 'verify']);
 });
-
