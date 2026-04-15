@@ -20,12 +20,16 @@ return [
     'allowed_methods' => ['*'],
 
     'allowed_origins' => [
+        'https://primewallet.com.ng',
+        'https://www.primewallet.com.ng',
         'https://primewallet.duckdns.org',
+        'http://localhost',
         'http://localhost:9000',
         'http://localhost:9001',
-        'http://localhost:3000',  
+        'http://localhost:3000',
+        'http://127.0.0.1',
         'http://127.0.0.1:9000',
-        ],
+    ],
 
     'allowed_origins_patterns' => [],
 
