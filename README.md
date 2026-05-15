@@ -17,7 +17,7 @@ PrimeWallet API is a backend service built with Laravel that powers a digital wa
 
 * Laravel (PHP)
 * MySQL / PostgreSQL
-* Laravel Sanctum / JWT Authentication
+* Laravel Sanctum
 * REST APIs
 * Git & GitHub
 
